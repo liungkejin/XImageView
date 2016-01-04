@@ -43,17 +43,6 @@ public class BitmapMatrix
 
     private final static String TAG = "BitmapMatrix";
 
-    private class SubBitmap
-    {
-        /**
-         * 位置
-         */
-        public int mN = 0;
-        public int mM = 0;
-
-        public Bitmap mBitmap = null;
-    }
-
     /**
      * 当前图片的的采样率
      */
@@ -203,15 +192,42 @@ public class BitmapMatrix
         return sample;
     }
 
-
+    /**
+     * 相对移动 view
+     */
     public void offset(int dx, int dy)
     {
         mViewAndBitmap.mViewBitmapRect.offset(-dx, -dy);
     }
 
-    public void scale(float sc)
+    /**
+     * 以 (cx, cy) 为中心缩放
+     */
+    public void scale(int cx, int cy, float sc)
     {
-        //
+        /**
+         * 相对 view 坐标系的 bitmap rect
+         */
+        Rect rect = mViewAndBitmap.toViewCoordinate(mViewAndBitmap.mShowBitmapRect);
+
+        /**
+         * 缩放
+         */
+        float left = (rect.left - cx) * sc;
+        float top = (rect.top - cy) * sc;
+        float right = (rect.right - cx) * sc;
+        float bottom = (rect.bottom - cy) * sc;
+
+        left += cx;
+        right += cx;
+        top += cy;
+        bottom += cy;
+
+        rect.set((int)left, (int)top, (int)right, (int)bottom);
+
+        /**
+         * TODO:
+         */
     }
 
     /**
@@ -380,8 +396,21 @@ public class BitmapMatrix
                 reAdjustRegion(sn, sm, en, em);
             }
 
-            mViewAndBitmap.getRealUnitRect(sn, sm);
+            for (int n = sn; n <= en; ++n) {
+                for (int m = sm; m <= em; ++m) {
+                    int i = n - mMainN + 1;
+                    int j = m - mMainM + 1;
+                    /**
+                     * 计算出相对 view 坐标系
+                     */
+                    Rect rect = mViewAndBitmap.getShowUnitRect(n, m);
+                    if (rect != null) {
+                        Rect vRect = mViewAndBitmap.toViewCoordinate(rect);
 
+                        canvas.drawBitmap(mSubBitmaps[i][j], vRect.left, vRect.top, null);
+                    }
+                }
+            }
         }
 
 
@@ -541,13 +570,18 @@ public class BitmapMatrix
         /**
          * 坐标转换, bitmap坐标转换为 view 坐标
          */
-        private Point toViewCoordinate(Point p)
+        private Rect toViewCoordinate(Rect rect)
         {
-            if (p == null) {
-                return new Point();
+            if (rect == null) {
+                return new Rect();
             }
 
-            return new Point();
+            int left = rect.left - mViewBitmapRect.left;
+            int right = left + rect.width();
+            int top = rect.top - mViewBitmapRect.top;
+            int bottom = top + rect.height();
+
+            return new Rect(left, top, right, bottom);
         }
 
         /**
@@ -790,7 +824,7 @@ public class BitmapMatrix
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                (int)(r.right*ratio), (int) (r.bottom*ratio));
+                        (int)(r.right*ratio), (int) (r.bottom*ratio));
     }
 
 
