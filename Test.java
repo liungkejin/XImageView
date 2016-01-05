@@ -9,6 +9,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapRegionDecoder;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.util.Log;
@@ -46,57 +48,25 @@ public class BitmapMatrix
     /**
      * 当前图片的的采样率
      */
-    private int mSampleSize = 1;
+    private int mSampleSize = 0;
 
     /**
      * 原图的宽高
      */
     private Rect mImageRect = new Rect();
-//
-//    /**
-//     * Show 映射到 Real上的比例
-//     */
-//    private float mWRatio = 1f;
-//    private float mHRatio = 1f;
-//
-//    /**
-//     * 需要显示的bitmap的宽高, 就是真实需要显示的宽高，
-//     * 从 mDecoder中出来的 bitmap 需要 缩放为 此宽高
-//     * 在计算的时候，需要缩放比例来
-//     */
-//    private Rect mShowBitmapRect = new Rect();
-//
-//    /**
-//     * 实际bitmap的宽高, 这个宽高就是 原图设置采样率后的宽高
-//     */
-//    private Rect mRealBitmapRect = new Rect();
-//
-//    /**
-//     * 视图的宽高
-//     */
-//    private Rect mViewRect = new Rect();
-//
-//    /**
-//     * 视图相对bitmap（mShowBitmapRect）坐标系的 rect
-//     */
-//    private Rect mViewBitmapRect = new Rect();
-//
-//
-//    /**
-//     * 维护一个3 x 3 的数组,
-//     */
-//    private SubBitmap [][] mSubBitmaps = new SubBitmap[3][3];
-//
-//    /**
-//     * 3 x 3 的中心的sub bitmap, 这个bitmap只有在完全没有显示了才会换位置
-//     */
-//    private SubBitmap mMainSub = mSubBitmaps[1][1];
-
 
     private Bitmap.Config mBitmapConfig = Bitmap.Config.RGB_565;
 
-
     private BitmapRegionDecoder mDecoder = null;
+
+    private final static Paint paint = new Paint();
+    static {
+    paint.setAntiAlias(true);
+    paint.setColor(Color.WHITE);
+    paint.setStyle(Paint.Style.STROKE);
+    paint.setStrokeWidth(1);
+    }
+
 
     /**
      * @param file 图片文件
@@ -129,7 +99,7 @@ public class BitmapMatrix
      * @param bw   bitmap的宽
      * @param bh   bitmap的高
      */
-    public void configMatrix(int vw, int vh, int bw, int bh)
+    public void initializeMatrix(int vw, int vh, int bw, int bh)
     {
         int iw = mImageRect.width();
         int ih = mImageRect.height();
@@ -146,12 +116,18 @@ public class BitmapMatrix
          */
         int height = (int) (ih * 1.0f / iw * bw);
         int width = (int) (iw * 1.0f / ih * bh);
+        int sampleSize = 1;
         if (width > bw) {
-            mSampleSize = getSampleSize(iw / bw);
+            sampleSize = getSampleSize(iw / bw);
         }
         else {
-            mSampleSize = getSampleSize(ih / bh);
+            sampleSize = getSampleSize(ih / bh);
         }
+
+        if (sampleSize == mSampleSize) {
+            return;
+        }
+        mSampleSize = sampleSize;
 
         /**
          * 获取 这个sampleSize 时的真实的 bitmap的宽高
@@ -163,9 +139,9 @@ public class BitmapMatrix
 
         mDecoder.decodeRegion(mImageRect, tmpOptions);
 
-        mViewAndBitmap.setViewAndBitmap(vw, vh, bw, bh, tmpOptions.outWidth, tmpOptions.outHeight);
+//        mViewAndBitmap.setViewAndBitmap(vw, vh, bw, bh, tmpOptions.outWidth, tmpOptions.outHeight);
 
-        debug();
+//        debug();
     }
 
 
@@ -174,22 +150,7 @@ public class BitmapMatrix
         Log.e(TAG, "ImageRect: " + mImageRect);
         Log.e(TAG, "SampleSize: " + mSampleSize);
 
-        mViewAndBitmap.debug();
-    }
-
-    /**
-     * 根据比率来获得合适的采样率, 因为采样率都是以 2^n 来定的
-     * TODO: 是否需要比 size 高一档
-     */
-    private int getSampleSize(int size)
-    {
-        int sample = 1;
-        while ((size / 2) != 0) {
-            size /= 2;
-            sample *= 2;
-        }
-
-        return sample;
+//        mViewAndBitmap.debug();
     }
 
     /**
@@ -197,7 +158,7 @@ public class BitmapMatrix
      */
     public void offset(int dx, int dy)
     {
-        mViewAndBitmap.mViewBitmapRect.offset(-dx, -dy);
+        mViewAndBitmap.offsetShowBitmap(dx, dy);
     }
 
     /**
@@ -205,29 +166,26 @@ public class BitmapMatrix
      */
     public void scale(int cx, int cy, float sc)
     {
-        /**
-         * 相对 view 坐标系的 bitmap rect
-         */
-        Rect rect = mViewAndBitmap.toViewCoordinate(mViewAndBitmap.mShowBitmapRect);
+        mViewAndBitmap.scaleShowBitmap(cx, cy, sc);
+//        debug();
+    }
 
-        /**
-         * 缩放
-         */
-        float left = (rect.left - cx) * sc;
-        float top = (rect.top - cy) * sc;
-        float right = (rect.right - cx) * sc;
-        float bottom = (rect.bottom - cy) * sc;
+    /**
+     * 当缩放结束后，需要重新解码最新的bitmap
+     */
+    public void updateBitmap()
+    {
+        mViewAndBitmap.updateBitmap();
+    }
 
-        left += cx;
-        right += cx;
-        top += cy;
-        bottom += cy;
-
-        rect.set((int)left, (int)top, (int)right, (int)bottom);
-
-        /**
-         * TODO:
-         */
+    /**
+     * 设置视图的宽和高
+     * 每次都重新初始化一次
+     */
+    public void setViewRect(int w, int h)
+    {
+        mViewAndBitmap.setView(w, h);
+//        debug();
     }
 
     /**
@@ -239,99 +197,6 @@ public class BitmapMatrix
         if (mDecoder == null) {
             return;
         }
-//
-//        if (width != mViewRect.width() || height != mViewRect.height()) {
-//            mViewRect.set(0, 0, width, height);
-//        }
-//
-//        int l = mViewBitmapRect.left;
-//        int r = mViewBitmapRect.right;
-//        int t = mViewBitmapRect.top;
-//        int b = mViewBitmapRect.bottom;
-//
-//        /**
-//         * 根据 view的坐标，求出 Image 相对 view 窗口的坐标系的坐标矩形
-//         */
-//        int left = mShowBitmapRect.left - l;
-//        int right = left + mShowBitmapRect.width();
-//        int top = mShowBitmapRect.top - t;
-//        int bottom = top + mShowBitmapRect.height();
-//
-//        Rect iRect = new Rect(left, top, right, bottom);
-//
-//        Log.e(TAG, "ImageRect: " + iRect);
-//
-//        /**
-//         * 找出实际需要显示的bitmap 区域
-//         */
-//        left = Math.max(iRect.left, 0);
-//        right = Math.min(iRect.right, r);
-//        top = Math.max(iRect.top, 0);
-//        bottom = Math.min(iRect.bottom, b);
-//
-//        Rect bRect = new Rect(left, top, right, bottom);
-//
-//        Log.e(TAG, "VisibleBitmapRect: " + bRect);
-//
-//        /**
-//         * 映射到真实的 bitmap 上, 相对view的坐标系
-//         */
-//        float wr = mRealBitmapRect.width() * 1.0f / mShowBitmapRect.width();
-//        float hr = mRealBitmapRect.height() * 1.0f / mShowBitmapRect.height();
-//
-//        left = (int) ((bRect.left - iRect.left) * wr);
-//        top  = (int) ((bRect.top - iRect.top) * hr);
-//        right = (int) ((bRect.right - iRect.right) * wr);
-//        bottom = (int) ((bRect.bottom - iRect.bottom) * hr);
-//
-//        Rect rRect = new Rect(left, top, right, bottom);
-//
-//        Log.e(TAG, "RealBitmapRect: " + rRect);
-//
-//        /**
-//         * 转换为 bitmap的坐标
-//         */
-//        left -= iRect.left;
-//        right -= iRect.left;
-//        top -= iRect.top;
-//        bottom -= iRect.bottom;
-//
-//        rRect.set(left, top, right, bottom);
-//        Log.e(TAG, "RealBitmapRect2: " + rRect);
-//
-//        /**
-//         * 把窗口也缩放到和真实的bitmap 同等级
-//         */
-//        int vw = (int) (mViewRect.width() * wr);
-//        int vh = (int) (mViewRect.height() * hr);
-//
-//        /**
-//         * 根据这个rect , 算出所涉及到的单元格，并判断是否需要重新分配
-//         */
-//        int sn = rRect.left / vw;
-//        int sm = rRect.top / vh;
-//
-//        int en = rRect.right / vw;
-//        int em = rRect.bottom / vh;
-//
-//        Rect uRect = new Rect(sm, sn, em, en);
-//        Log.e(TAG, "S(" + sn + ", " + sm + ")" + " E(" + en + ", " + em +")");
-//        if (mMainSub.mBitmap == null) {
-//            /**
-//             * 第一次以第一个可见的单元格为主格
-//             */
-//            mMainSub.mN = sn;
-//            mMainSub.mM = sm;
-//        }
-//
-//        /**
-//         * 检查主单元格是否在当前可见的单元格里面，如果不在，则需要重新设置主单元格
-//         *
-//         */
-//        if (!uRect.contains(mMainSub.mN, mMainSub.mM)) {
-//            mMainSub.mN = sn;
-//            mMainSub.mM = sm;
-//        }
 
         mRegionBitmap.drawRegionBitmap(canvas);
     }
@@ -371,20 +236,24 @@ public class BitmapMatrix
         private void drawRegionBitmap(Canvas canvas)
         {
             Rect virtualViewRect = mViewAndBitmap.getVirtualViewRect();
+            Log.e(TAG, "Virtual View Rect: " + virtualViewRect);
 
             int vw = virtualViewRect.width();
             int vh = virtualViewRect.height();
 
             Rect visibleBitmapRect = mViewAndBitmap.getVisibleRealBitmapRect();
+            Log.e(TAG, "Visible Bitmap Rect: " + visibleBitmapRect);
 
             /**
              * 根据这个rect , 算出所涉及到的单元格，并判断是否需要重新分配
              */
-            int sn = visibleBitmapRect.left / vw;
-            int sm = visibleBitmapRect.top / vh;
+            int sm = visibleBitmapRect.left / vw;
+            int sn = visibleBitmapRect.top / vh;
 
-            int en = visibleBitmapRect.right / vw;
-            int em = visibleBitmapRect.bottom / vh;
+            int em = visibleBitmapRect.right / vw;
+            int en = visibleBitmapRect.bottom / vh;
+
+            Log.e(TAG, "S(" + sn + ", " + sm + ")" + " E(" + en + ", " + em +")");
 
             /**
              * 第一次以第一个可见的单元格为主格
@@ -400,24 +269,33 @@ public class BitmapMatrix
                 for (int m = sm; m <= em; ++m) {
                     int i = n - mMainN + 1;
                     int j = m - mMainM + 1;
+                    if (i < 0 || i >=3 || j < 0 || j>=3) {
+                        continue;
+                    }
                     /**
                      * 计算出相对 view 坐标系
                      */
                     Rect rect = mViewAndBitmap.getShowUnitRect(n, m);
-                    if (rect != null) {
+                    if (rect != null && mSubBitmaps[i][j] != null) {
                         Rect vRect = mViewAndBitmap.toViewCoordinate(rect);
 
-                        canvas.drawBitmap(mSubBitmaps[i][j], vRect.left, vRect.top, null);
+                        canvas.drawBitmap(mSubBitmaps[i][j], null, vRect, null);
+
+                        paint.setColor(Color.BLUE);
+                        canvas.drawRect(vRect, paint);
                     }
                 }
             }
+
+            /**
+             * For Debug
+             */
+            mViewAndBitmap.debug(canvas);
         }
 
 
         private void reAdjustRegion(int sn, int sm , int en, int em)
         {
-            Log.e(TAG, "S(" + sn + ", " + sm + ")" + " E(" + en + ", " + em +")");
-
             if (mSubBitmaps[1][1] == null) {
 
                 mMainN = sn;
@@ -559,12 +437,156 @@ public class BitmapMatrix
          ***************************************************************
          **/
 
-        private void setViewAndBitmap(
-                int vw, int vh, int sw, int sh, int rw, int rh)
+        private void setView(int vw, int vh)
         {
+            if (mDecoder == null) {
+                return;
+            }
+
+            if (vw == mViewRect.width() && vh == mViewRect.height()) {
+                return;
+            }
+
             mViewRect.set(0, 0, vw, vh);
-            mShowBitmapRect.set(0, 0, sw, sh);
-            mRealBitmapRect.set(0, 0, rw, rh);
+            Log.e(TAG, "ViewRect: " + mViewRect);
+
+            int iw = mImageRect.width();
+            int ih = mImageRect.height();
+            int height = (int) (ih * 1.0f / iw * vw);
+            int width = (int) (iw * 1.0f / ih * vh);
+            float ratio = 1f;
+            if (width > vw) {
+                ratio = iw * 1f / vw;
+            }
+            else {
+                ratio = ih * 1f / vh;
+            }
+
+            Log.e(TAG, "ratio: " + ratio);
+            mShowBitmapRect.set(0, 0, (int) (iw / ratio), (int) (ih / ratio));
+
+            Log.e(TAG, "ShowBitmap: " + mShowBitmapRect);
+
+            /**
+             * 默认一开始为两个坐标系重合
+             * TODO:
+             */
+            mViewBitmapRect.set(0, 0, mViewRect.width(), mViewRect.height());
+
+            updateBitmap();
+        }
+
+        /**
+         * 当缩放结束后，需要重新解码最新的bitmap
+         */
+        private void updateBitmap()
+        {
+            int iw = mImageRect.width();
+            int ih = mImageRect.height();
+            if (mDecoder == null || iw == 0 || ih == 0) {
+                return;
+            }
+
+            int bw = mShowBitmapRect.width();
+            int bh = mShowBitmapRect.height();
+            if (bw <= 0 || bh <= 0) {
+                return;
+            }
+
+            /**
+             * 以 bitmap 的宽高为标准
+             * 分别以 宽高为标准， 计算对应的的宽高
+             * 如果是宽图, 则以View的宽为标准
+             * 否则为高图， 以view的高为标准
+             * 求出 SampleSize
+             */
+            int height = (int) (ih * 1.0f / iw * bw);
+            int width = (int) (iw * 1.0f / ih * bh);
+            int sampleSize = 1;
+            if (width > bw) {
+                sampleSize = getSampleSize(iw / bw);
+            }
+            else {
+                sampleSize = getSampleSize(ih / bh);
+            }
+
+            if (sampleSize == mSampleSize) {
+                return;
+            }
+            mSampleSize = sampleSize;
+
+            /**
+             * 获取 这个sampleSize 时的真实的 bitmap的宽高
+             */
+            BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
+            tmpOptions.inPreferredConfig = mBitmapConfig;
+            tmpOptions.inSampleSize = mSampleSize;
+            tmpOptions.inJustDecodeBounds = true;
+
+            mDecoder.decodeRegion(mImageRect, tmpOptions);
+
+            mRealBitmapRect.set(0, 0, tmpOptions.outWidth, tmpOptions.outHeight);
+            Log.e(TAG, "RealBitmapRect: " + mRealBitmapRect);
+            Log.e(TAG, "-----------------------------------------------");
+        }
+
+        /**
+         * 缩放显示的 bitmap,
+         * @param cx 中心点的 x
+         * @param cy 中心点的 y
+         * @param sc 缩放系数
+         */
+        private void scaleShowBitmap(int cx, int cy, float sc)
+        {
+            /**
+             * 将焦点移到 ShowBitmap的中线上(最长的一条中线)
+             */
+            Rect visibleShowBitmapRect = getVisibleShowBitmapRect();
+            Rect rect = toViewCoordinate(visibleShowBitmapRect);
+            cx = mViewRect.centerX();
+            cy = mViewRect.centerY();
+
+            Log.e(TAG, "CenterX, Y: " + cx + " cy: " + cy);
+            /**
+             * 相对 view 坐标系的 bitmap rect
+             */
+            Rect oRect = toViewCoordinate(mShowBitmapRect);
+
+            Log.e(TAG, "Before Scale Rect: " + oRect + " Show: " + mShowBitmapRect);
+
+            /**
+             * 缩放
+             */
+            float left = (oRect.left - cx) * sc + cx;
+            float top = (oRect.top - cy) * sc + cy;
+            float right = (oRect.right - cx) * sc + cx;
+            float bottom = (oRect.bottom - cy) * sc + cy;
+
+            Rect nRect = new Rect((int)left, (int)top, (int)right, (int)bottom);
+            mShowBitmapRect.set(0, 0, nRect.width(), nRect.height());
+
+            Log.e(TAG, "After Scale Rect: " + nRect + " Show: " + mShowBitmapRect);
+
+
+            Log.e(TAG, "Before Scale mViewBitmapRect: " + mViewBitmapRect);
+            Rect vRect = new Rect(0, 0, mViewRect.width(), mViewRect.height());
+            vRect.left -= nRect.left;
+            vRect.right = vRect.left + mViewRect.width();
+            vRect.top -= nRect.top;
+            vRect.bottom = vRect.top + mViewRect.height();
+
+            mViewBitmapRect.set(vRect);
+            Log.e(TAG, "After Scale mViewBitmapRect: " + mViewBitmapRect);
+        }
+
+        /**
+         * 移动
+         * @param dx
+         * @param dy
+         */
+        private void offsetShowBitmap(int dx, int dy)
+        {
+            mViewBitmapRect.offset(-dx, -dy);
         }
 
         /**
@@ -587,14 +609,20 @@ public class BitmapMatrix
         /**
          * view 坐标转换为 bitmap 坐标
          */
-        private Point toBitmapCoordinate(Point p)
+        private Rect toBitmapCoordinate(Rect rect)
         {
-            if (p == null) {
-                return new Point();
+            if (rect == null) {
+                return new Rect();
             }
 
-            return new Point();
+            int left = rect.left + mViewBitmapRect.left;
+            int right = left + rect.width();
+            int top = rect.top + mViewBitmapRect.top;
+            int bottom = top + rect.height();
+
+            return new Rect(left, top, right, bottom);
         }
+
 
         private Rect getVirtualViewRect()
         {
@@ -693,7 +721,6 @@ public class BitmapMatrix
             int n = rw / vw + (rw % vw == 0 ? 0 : 1);
             int m = rh / vh + (rh % vh == 0 ? 0 : 1);
 
-
             return new Point(n, m);
         }
 
@@ -786,13 +813,27 @@ public class BitmapMatrix
             return toImageRect(getRealUnitRect(n, m));
         }
 
-        private void debug()
+        private void debug(Canvas canvas)
         {
             Log.e(TAG, "ViewRect: " + mViewRect);
             Log.e(TAG, "BitmapRect: " + mShowBitmapRect);
             Log.e(TAG, "RealBitmapRect: " + mRealBitmapRect);
             Log.e(TAG, "BitmapRatio: " + getBitmapRatio());
             Log.e(TAG, "ImageRatio: " + getImageWidthRatio() + " H: " + getImageHeightRatio());
+            Log.e(TAG, "ViewBitmapRect: " + mViewBitmapRect);
+
+            paint.setColor(Color.WHITE);
+            canvas.drawRect(toViewCoordinate(mViewBitmapRect), paint);
+            paint.setColor(Color.RED);
+            canvas.drawRect(toViewCoordinate(mShowBitmapRect), paint);
+            paint.setColor(Color.GREEN);
+            canvas.drawRect(toViewCoordinate(mRealBitmapRect), paint);
+
+            paint.setColor(Color.YELLOW);
+            canvas.drawRect(toViewCoordinate(getVisibleShowBitmapRect()), paint);
+
+            paint.setColor(Color.WHITE);
+            canvas.drawRect(toViewCoordinate(getVisibleRealBitmapRect()), paint);
         }
     }
 
@@ -824,7 +865,22 @@ public class BitmapMatrix
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                        (int)(r.right*ratio), (int) (r.bottom*ratio));
+                (int)(r.right*ratio), (int) (r.bottom*ratio));
+    }
+
+    /**
+     * 根据比率来获得合适的采样率, 因为采样率都是以 2^n 来定的
+     * TODO: 是否需要比 size 高一档
+     */
+    private int getSampleSize(int size)
+    {
+        int sample = 1;
+        while ((size / 2) != 0) {
+            size /= 2;
+            sample *= 2;
+        }
+
+        return sample;
     }
 
 
@@ -902,5 +958,314 @@ public class BitmapMatrix
                 e.printStackTrace();
             }
         }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+package cn.kejin.android.views;
+
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.util.AttributeSet;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.View;
+
+import java.io.InputStream;
+
+/**
+ * Author: Kejin ( Liang Ke Jin )
+ * Date: 2016/1/5
+ */
+public class SuperImageView2 extends View
+{
+    public final static String TAG = "SuperImageView";
+
+    /**
+     * Gesture Detector
+     */
+    private SimpleGestureDetector mSimpleDetector = null;
+
+
+    private BitmapMatrix mBitmapMatrix = null;
+
+    public SuperImageView2(Context context)
+    {
+        super(context);
+        initialize();
+    }
+
+    public SuperImageView2(Context context, AttributeSet attrs)
+    {
+        super(context, attrs);
+        initialize();
+    }
+
+    public SuperImageView2(Context context, AttributeSet attrs, int defStyleAttr)
+    {
+        super(context, attrs, defStyleAttr);
+        initialize();
+    }
+
+    private void initialize()
+    {
+        Context context = getContext();
+
+        mSimpleDetector = new SimpleGestureDetector(context, mGestureListener);
+    }
+
+    public void setInputStream(InputStream is)
+    {
+        mBitmapMatrix = new BitmapMatrix(is, null);
+        invalidate();
+    }
+
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event)
+    {
+        mSimpleDetector.onTouchEvent(event);
+
+        /**
+         * 到达边界时返回false
+         */
+        return true;
+    }
+
+    /**
+     * 当前要Draw的状态，
+     * 1. 显示完全（缩略图）
+     * 2. 手指放大，拖动查看
+     * 3. 放大或者缩小到适应屏幕，
+     *
+     * 如果状态为1, 双击后状态为3,
+     * 如果状态为3，双击后状态为1，
+     * 1,3状态都可以是 2 的初始状态
+     * 在2状态双击会回到状态1
+     */
+    private int mDrawState = STATE_THUMB;
+
+    private final static int STATE_THUMB    = 0x11;
+    private final static int STATE_NORMAL   = 0x12;
+    private final static int STATE_FULL     = 0x13;
+
+    @Override
+    protected void onDraw(Canvas canvas)
+    {
+        if (mBitmapMatrix == null) {
+            return;
+        }
+
+        int width = getWidth();
+        int height = getHeight();
+        mBitmapMatrix.setViewRect(width, height);
+
+        mBitmapMatrix.drawVisibleBitmap(canvas);
+
+        switch (mDrawState) {
+            case STATE_THUMB:
+                drawFullState(canvas);
+                break;
+
+            case STATE_NORMAL:
+                drawNormalState(canvas);
+                break;
+
+            case STATE_FULL:
+                break;
+
+        }
+
+    }
+
+
+    /**
+     * 画缩略图
+     */
+    private void drawFullState(Canvas canvas)
+    {
+        int width = getWidth();
+        int height = getHeight();
+    }
+
+
+    private void drawNormalState(Canvas canvas)
+    {
+        //
+    }
+
+    /**
+     * 手势监听回调
+     */
+    private SimpleGestureDetector.GestureListener
+            mGestureListener = new SimpleGestureDetector.GestureListener()
+    {
+        @Override
+        public void onTapped(int x, int y)
+        {
+            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y);
+        }
+
+        @Override
+        public void onDoubleClicked(int x, int y)
+        {
+            Log.e(TAG, "On Double Clicked: X: " + x + " Y: " + y);
+
+            if (mBitmapMatrix == null) {
+                return;
+            }
+
+            /**
+             * TODO: 添加动画
+             */
+            switch (mDrawState) {
+                case STATE_FULL:
+                case STATE_NORMAL:
+                    mDrawState = STATE_THUMB;
+                    invalidate();
+                    break;
+
+                case STATE_THUMB:
+                    mDrawState = STATE_FULL;
+                    invalidate();
+                    break;
+            }
+        }
+
+        @Override
+        public void onMoving(int preX, int preY, int x, int y, int dx, int dy)
+        {
+            if (mBitmapMatrix == null) {
+                return;
+            }
+
+            mDrawState = STATE_NORMAL;
+
+            mBitmapMatrix.offset(dx, dy);
+
+            invalidate();
+        }
+
+        private int mFocusX = 0;
+        private int mFocusY = 0;
+
+        @Override
+        public boolean onScale(ScaleGestureDetector detector, int state)
+        {
+            if (mBitmapMatrix == null) {
+                return true;
+            }
+
+            mDrawState = STATE_NORMAL;
+            /**
+             * 始终以当前显示区域的中心点为中心进行缩放
+             */
+            float factor = detector.getScaleFactor();
+            switch (state) {
+                case STATE_BEG:
+                    mFocusX = (int) detector.getFocusX();
+                    mFocusY = (int) detector.getFocusY();
+                    break;
+
+                case STATE_ING:
+                    mBitmapMatrix.scale(mFocusX, mFocusY, factor);
+                    invalidate();
+                    break;
+
+                case STATE_END:
+                    /**
+                     * 更新bitmap
+                     */
+                    mBitmapMatrix.updateBitmap();
+                    invalidate();
+                    break;
+            }
+
+            return true;
+        }
+    };
+
+    /**
+     * scale一个矩形
+     */
+    private RectF scaleRect(RectF rect, float scale)
+    {
+        float cx = rect.centerX();
+        float cy = rect.centerY();
+
+        float left = (rect.left - cx)*scale + cx;
+        float top = (rect.top - cy)*scale + cy;
+
+        float right = (rect.right - cx)*scale + cx;
+        float bottom = (rect.bottom - cy)*scale + cy;
+
+        return new RectF(left, top, right, bottom);
+    }
+
+    /**
+     * 获取两个矩形的相交区域
+     */
+    private RectF getIntersectedRect(RectF rect1, RectF rect2)
+    {
+        if (!rect1.intersect(rect2)) {
+            return new RectF();
+        }
+
+        float left = Math.max(rect2.left, rect1.left);
+        float right = Math.min(rect2.right, rect1.right);
+
+        float top = Math.max(rect2.top, rect1.top);
+        float bottom = Math.min(rect2.bottom, rect1.bottom);
+
+        return new RectF(left, top, right, bottom);
+    }
+
+
+    /**
+     * 根据比率来获得合适的采样率, 因为采样率都是以 2^n 来定的
+     */
+    private int getSampleSize(int size)
+    {
+        int sample = 1;
+        while ((size / 2) != 0) {
+            size /= 2;
+            sample *= 2;
+        }
+        Log.e(TAG, "SampleSize: " + sample);
+
+        return sample;
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec)
+    {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+    }
+
+    @Override
+    protected void onAttachedToWindow()
+    {
+        super.onAttachedToWindow();
+    }
+
+    @Override
+    protected void onDetachedFromWindow()
+    {
+        super.onDetachedFromWindow();
     }
 }
