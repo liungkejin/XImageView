@@ -11,7 +11,6 @@ import android.graphics.BitmapRegionDecoder;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Point;
 import android.graphics.Rect;
 import android.util.Log;
 
@@ -93,67 +92,6 @@ public class BitmapMatrix
 
 
     /**
-     * 重新初始化整个 Matrix, 重新分割Bitmap
-     * @param vw   view的宽
-     * @param vh   view的高
-     * @param bw   bitmap的宽
-     * @param bh   bitmap的高
-     */
-    public void initializeMatrix(int vw, int vh, int bw, int bh)
-    {
-        int iw = mImageRect.width();
-        int ih = mImageRect.height();
-        if (mDecoder == null || iw == 0 || ih == 0) {
-            return;
-        }
-
-        /**
-         * 以 bitmap 的宽高为标准
-         * 分别以 宽高为标准， 计算对应的的宽高
-         * 如果是宽图, 则以View的宽为标准
-         * 否则为高图， 以view的高为标准
-         * 求出 SampleSize
-         */
-        int height = (int) (ih * 1.0f / iw * bw);
-        int width = (int) (iw * 1.0f / ih * bh);
-        int sampleSize = 1;
-        if (width > bw) {
-            sampleSize = getSampleSize(iw / bw);
-        }
-        else {
-            sampleSize = getSampleSize(ih / bh);
-        }
-
-        if (sampleSize == mSampleSize) {
-            return;
-        }
-        mSampleSize = sampleSize;
-
-        /**
-         * 获取 这个sampleSize 时的真实的 bitmap的宽高
-         */
-        BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
-        tmpOptions.inPreferredConfig = mBitmapConfig;
-        tmpOptions.inSampleSize = mSampleSize;
-        tmpOptions.inJustDecodeBounds = true;
-
-        mDecoder.decodeRegion(mImageRect, tmpOptions);
-
-//        mViewAndBitmap.setViewAndBitmap(vw, vh, bw, bh, tmpOptions.outWidth, tmpOptions.outHeight);
-
-//        debug();
-    }
-
-
-    private void debug()
-    {
-        Log.e(TAG, "ImageRect: " + mImageRect);
-        Log.e(TAG, "SampleSize: " + mSampleSize);
-
-//        mViewAndBitmap.debug();
-    }
-
-    /**
      * 相对移动 view
      */
     public void offset(int dx, int dy)
@@ -184,8 +122,10 @@ public class BitmapMatrix
      */
     public void setViewRect(int w, int h)
     {
+        Log.e(TAG, "Before Time: " + System.currentTimeMillis());
         setView(w, h);
 //        debug();
+        Log.e(TAG, "After Time: " + System.currentTimeMillis());
     }
 
     /**
@@ -202,23 +142,7 @@ public class BitmapMatrix
     }
 
 
-
-//    private ViewAndBitmap mViewAndBitmap = new ViewAndBitmap();
-
     private BitmapGrid mBitmapGrid = new BitmapGrid();
-
-
-    private final int [][] NINE_INDEX = {
-            {1, 0},
-            {0, 0},
-            {0, 1},
-            {0, -1},
-            {-1, 0},
-            {1, 1},
-            {1, -1},
-            {-1, 1},
-            {-1, -1}
-    };
 
     private class BitmapUnit
     {
@@ -269,12 +193,6 @@ public class BitmapMatrix
         private int mM = 0;
 
         /**
-         * 主显示单元格
-         */
-        private int mMainN = -1;
-        private int mMainM = -1;
-
-        /**
          * 所有的单元格
          */
         private BitmapUnit [][] mGrids = null;
@@ -303,9 +221,6 @@ public class BitmapMatrix
             mN = ih / vh + (ih % vh == 0 ? 0 : 1);
             mM = iw / vw + (iw % vw == 0 ? 0 : 1);
 
-            mMainN = -1;
-            mMainM = -1;
-
             mGrids = new BitmapUnit[mN][mM];
             for (int i = 0; i < mN; ++i) {
                 for (int j = 0; j < mM; ++j) {
@@ -316,6 +231,7 @@ public class BitmapMatrix
             /**
              * 初始化缩略图
              */
+            Log.e(TAG, "Before Thumb: " + System.currentTimeMillis());
             for (int n = 0; n < mN; ++n) {
                 for (int m = 0; m < mM; ++m) {
                     Rect rect = getUnitRect(n, m);
@@ -324,6 +240,7 @@ public class BitmapMatrix
                     }
                 }
             }
+            Log.e(TAG, "After Thumb: " + System.currentTimeMillis());
         }
 
         /**
@@ -395,7 +312,8 @@ public class BitmapMatrix
         }
 
         /**
-         * 当缩放结束之后， 需要重新调整和解码出最新的bitmap
+         * 当缩放结束之后，如果 SampleSize 改变了， 则需要重新调整和解码出最新的bitmap
+         * TODO: 使用异步
          */
         private void updateBitmapGrid()
         {
@@ -405,36 +323,60 @@ public class BitmapMatrix
 
             Rect visible = getVisibleGrid();
 
-            int sn = visible.top;
-            int sm = visible.left;
-            int en = visible.bottom;
-            int em = visible.right;
+            int sn = Math.max(visible.top-1, 0);
+            int sm = Math.max(visible.left-1, 0);
+            int en = Math.min(visible.bottom+1, mN);
+            int em = Math.min(visible.right+1, mM);
 
-            recycleNineRegion();
+            recycleInvisibleGrids(visible);
 
-            /**
-             * 第一次假设第一个为主单元格
-             */
-            mMainN = sn;
-            mMainM = sm;
-
-            for (int[] subIndex : NINE_INDEX) {
-                int dn = subIndex[0];
-                int dm = subIndex[1];
-
-                int n = mMainN + dn;
-                int m = mMainM + dm;
-
-                if (isValidGrid(n, m)) {
-                    Rect rect = getUnitRect(n, m);
-                    mGrids[n][m].mBitmap = decodeRectBitmap(rect);
+            for (int n = sn; n <= en; ++n) {
+                for (int m = sm; m <= em; ++m) {
+                    if (isValidGrid(n, m)) {
+                        Rect rect = getUnitRect(n, m);
+                        if (mGrids[n][m].mBitmap != null) {
+                            mGrids[n][m].recycle();
+                        }
+                        mGrids[n][m].mBitmap = decodeRectBitmap(rect);
+                    }
                 }
             }
         }
 
         /**
-         * 调整可见区域的单元格，并如果主单元格不可见了，则需要重新分配主单元格
-         * TODO: 当缩放之后需要重新调整所有显示的单元格
+         * 回收不可见区域的bitmap
+         * @param visible 可见区域
+         */
+        private void recycleInvisibleGrids(Rect visible)
+        {
+            int sn = visible.top;
+            int sm = visible.left;
+            int en = visible.bottom;
+            int em = visible.right;
+
+            /**
+             * 如果上一次有不可见的，并距离可见区域 > 2 的，就释放掉
+             * +--+--+--+--+--+
+             * |XX|00|11|11|00|
+             * +--+--+--+--+--+
+             * |XX|00|11|11|00|
+             * +--+--+--+--+--+
+             * |XX|00|00|00|00|
+             * +--+--+--+--+--+
+             * XX 部分就是可以被释放掉的区域
+             */
+            for (int i = 0; i < mN; ++i) {
+                for (int j = 0; j < mM; ++j) {
+                    if (sn - i >= 2 || i - en >= 2
+                            || sm - j >= 2 || j - em >= 2) {
+                        mGrids[i][j].recycle();
+                    }
+                }
+            }
+        }
+
+        /**
+         * 调整可见区域的单元格，并释放掉不需要维护的单元格
          */
         private void adjustVisibleBitmapGrid()
         {
@@ -444,121 +386,23 @@ public class BitmapMatrix
 
             Rect visible = getVisibleGrid();
 
-            int sn = visible.top;
-            int sm = visible.left;
-            int en = visible.bottom;
-            int em = visible.right;
+            int sn = Math.max(visible.top-1, 0);
+            int sm = Math.max(visible.left-1, 0);
+            int en = Math.min(visible.bottom+1, mN);
+            int em = Math.min(visible.right+1, mM);
 
-            if (mMainM == -1 || mMainN == -1) {
-                /**
-                 * 第一次假设第一个为主单元格
-                 */
-                mMainN = sn;
-                mMainM = sm;
+            recycleInvisibleGrids(visible);
 
-                for (int[] subIndex : NINE_INDEX) {
-                    int dn = subIndex[0];
-                    int dm = subIndex[1];
-
-                    int n = mMainN + dn;
-                    int m = mMainM + dm;
-
-                    if (isValidGrid(n, m)) {
+            /**
+             * 刷新可见区域的bitmap, 并进行预加载
+             * 即加载这个单元格周围的 9 个单元格,
+             */
+            for (int n = sn; n <= en; ++n) {
+                for (int m = sm; m <= em; ++m) {
+                    if (isValidGrid(n, m) && mGrids[n][m].mBitmap == null) {
                         Rect rect = getUnitRect(n, m);
                         mGrids[n][m].mBitmap = decodeRectBitmap(rect);
                     }
-                }
-            }
-            else if (!(mMainN >= sn && mMainN <= en && mMainM >= sm && mMainM <= em)) {
-                /**
-                 * 如果主单元格不可见了, 需要重新分配主单元格
-                 */
-                int osn = Math.max(mMainN-1, 0);
-                int osm = Math.max(mMainM-1, 0);
-
-                int oen = Math.min(mMainN + 1, mN-1);
-                int oem = Math.min(mMainM + 1, mM-1);
-
-                /**
-                 * 优先选择原主单元格的前后左右四个格为主格，如果没有，则还是以第一个可见的为主格
-                 */
-                int newN = sn;
-                int newM = sm;
-
-                for (int n = sn; n <= en; ++n) {
-                    for (int m = sm; m <= em; ++m) {
-                        if (n >= osn && n <= oen && m >= osm && m <= oem) {
-                            if (Math.abs(n - mN) + Math.abs(m - mM) == 1) {
-                                newN = n;
-                                newM = m;
-                                break;
-                            }
-                        }
-                    }
-                }
-                Log.e(TAG, "newN: " + newN + " newM: " + newM);
-
-                mMainN = newN;
-                mMainM = newM;
-
-                /**
-                 * 把没用的释放掉
-                 */
-                for (int n = osn; n <= oen; ++n) {
-                    for (int m = osm; m <= oem; ++m) {
-                        if (!isInNineRegion(n, m)) {
-                            mGrids[n][m].recycle();
-                        }
-                    }
-                }
-
-                /**
-                 * 在把需要显示的分配出来
-                 */
-                sn = Math.max(mMainN-1, 0);
-                sm = Math.max(mMainM-1, 0);
-
-                en = Math.min(mMainN + 1, mN-1);
-                em = Math.min(mMainM + 1, mM-1);
-                for (int n = sn; n <= en; ++n) {
-                    for (int m = sm; m <= em; ++m) {
-                        if (mGrids[n][m].mBitmap == null) {
-                            Rect rect = getUnitRect(n, m);
-                            mGrids[n][m].mBitmap = decodeRectBitmap(rect);
-                        }
-                    }
-                }
-            }
-        }
-
-        /**
-         * 判断此单元格是否在九宫格内
-         */
-        private boolean isInNineRegion(int n, int m)
-        {
-            int sn = Math.max(mMainN - 1, 0);
-            int sm = Math.max(mMainM-1, 0);
-
-            int en = Math.min(mMainN + 1, mN-1);
-            int em = Math.min(mMainM + 1, mM-1);
-
-            return (n >= sn && n <= en && m >= sm && m <= em);
-        }
-
-        /**
-         * 把九个格子全部释放
-         */
-        private void recycleNineRegion()
-        {
-            int osn = Math.max(mMainN-1, 0);
-            int osm = Math.max(mMainM-1, 0);
-
-            int oen = Math.min(mMainN + 1, mN-1);
-            int oem = Math.min(mMainM + 1, mM-1);
-
-            for (int n = osn; n <= oen; ++n) {
-                for (int m = osm; m <= oem; ++m) {
-                    mGrids[n][m].recycle();
                 }
             }
         }
@@ -591,6 +435,10 @@ public class BitmapMatrix
                         else if (mGrids[n][m].mThumbBitmap != null) {
                             canvas.drawBitmap(mGrids[n][m].mThumbBitmap, null, vRect, null);
                         }
+
+                        mPaint.setColor(Color.MAGENTA);
+                        mPaint.setStrokeWidth(2);
+                        canvas.drawRect(vRect, mPaint);
                     }
                 }
             }
@@ -600,7 +448,6 @@ public class BitmapMatrix
 
     /**
      * 计算显示和原图之间的比例
-     * @return
      */
     private float getShowImageRatio()
     {
@@ -632,7 +479,7 @@ public class BitmapMatrix
         /**
          * 将RealBitmap 也分割为 N x M 个单元格
          */
-        Rect vRect = rectMulti(mViewRect, 1f / getRealImageRatio());
+        Rect vRect = rectMulti(mViewRect, getRealImageRatio());
         Log.e(TAG, "Virtual View Rect: " + vRect);
 
         int vw = vRect.width();
@@ -669,118 +516,6 @@ public class BitmapMatrix
          */
         debug(canvas);
     }
-
-
-//    private void reAdjustRegionBitmap(int sn, int sm, int en, int em)
-//    {
-//        if (mMatrix == null) {
-//            /**
-//             * 第一次以一个显示的为主格
-//             */
-//            mMainN = sn;
-//            mMainM = sm;
-//
-//            mMatrix = new BitmapUnit[mN][mM];
-//
-//            /**
-//             * 以[1][1]为中心点
-//             */
-//            for (int[] aMSubIndex : NINE_INDEX) {
-//                int dn = aMSubIndex[0];
-//                int dm = aMSubIndex[1];
-//
-//                int i = dn + 1;
-//                int j = dm + 1;
-//
-//                int n = mN + dn;
-//                int m = mM + dm;
-//
-//                if (n >= 0 && n <= sumN && m >= 0 && m < sumM) {
-//                    Rect rect = mViewAndBitmap.getImageUnitRect(n, m);
-//                    mSubBitmaps[i][j] = decodeRectBitmap(rect);
-//                }
-//                else {
-//                    mSubBitmaps[i][j] = null;
-//                }
-//            }
-//        }
-//        else {
-//            /**
-//             * 首先找到新区域的主单元格
-//             */
-//            int osn = mN - 1;
-//            int osm = mM - 1;
-//
-//            int oen = mN + 1;
-//            int oem = mM + 1;
-//
-//            int newN = sn;
-//            int newM = sm;
-//
-//            for (int n = sn; n <= en; ++n) {
-//                for (int m = sm; m <= em; ++m) {
-//                    if (n >= osn && n <= oen && m >= osm && m <= oem) {
-//                        if (Math.abs(n- mN)+Math.abs(m- mM) == 1) {
-//                            newN = n;
-//                            newM = m;
-//                            break;
-//                        }
-//                    }
-//                }
-//            }
-//
-//            Bitmap [][] bitmaps = new Bitmap[3][3];
-//
-//            /**
-//             * 将还可用的bitmap 移到正确的单元格内，不再需要的 bitmap 进行释放
-//             */
-//            for (int[] aMSubIndex : NINE_INDEX) {
-//                int dn = aMSubIndex[0];
-//                int dm = aMSubIndex[1];
-//
-//                // [3][3]
-//                int i = dn + 1;
-//                int j = dm + 1;
-//
-//                // 当前最新的单元格
-//                int nn = newN + dn;
-//                int nm = newM + dm;
-//
-//                /**
-//                 *
-//                 */
-//                if (nn >= osn && nn <= oen && nm >= osm && nm <= oem) {
-//
-//                    int oi = nn - mN + 1;
-//                    int oj = nm - mM + 1;
-//                    Log.e(TAG, "OI: " + oi + "  OJ: " + oj);
-//                    bitmaps[i][j] = mSubBitmaps[oi][oj];
-//                    mSubBitmaps[oi][oj] = null;
-//                }
-//
-//                if (bitmaps[i][j] == null) {
-//                    Rect rect = mViewAndBitmap.getImageUnitRect(nn, nm);
-//                    bitmaps[i][j] = decodeRectBitmap(rect);
-//                }
-//            }
-//
-//            /**
-//             * 释放并重新赋值
-//             */
-//            for (int i = 0; i < 3; i++) {
-//                for (int j =0; j < 3; ++j) {
-//                    if (mSubBitmaps[i][j] != null) {
-//                        mSubBitmaps[i][j].recycle();
-//                    }
-//                    mSubBitmaps[i][j] = bitmaps[i][j];
-//                }
-//            }
-//
-//            mN = sn;
-//            mM = sm;
-//        }
-//    }
-//
 
     /**
      * 管理视窗 和 bitmap (显示的和真实的)
@@ -924,8 +659,12 @@ public class BitmapMatrix
     /**
      * 重置为初始化状态
      */
-    private void reInitShowBitmapRect()
+    private void resetShowBitmapRect()
     {
+        if (mShowBitmapRect == mInitShowBitmapRect) {
+            return;
+        }
+
         mShowBitmapRect.set(mInitShowBitmapRect);
 
         int left = (mShowBitmapRect.width() - mViewRect.width())/2;
@@ -966,15 +705,16 @@ public class BitmapMatrix
          * 以cx, cy缩放
          */
         int left = (int) Math.floor(cx - (cx - oRect.left) * sc);
-        int right = (int) (left + (oRect.width() * sc) + 0.5f);
+        int right = (int) (left + (oRect.width() * sc));
 
         int top = (int) Math.floor(cy - (cy - oRect.top) * sc);
         int bottom = (int) ((right - left) * getImageRatio() + top);
 
         Rect nRect = new Rect(left, top, right, bottom);
 
-        if (nRect.width() < mInitShowBitmapRect.width() || nRect.height() < mInitShowBitmapRect.height()) {
-            reInitShowBitmapRect();
+        if (nRect.width() < mInitShowBitmapRect.width() ||
+                nRect.height() < mInitShowBitmapRect.height()) {
+            resetShowBitmapRect();
             return;
         }
 
@@ -984,7 +724,7 @@ public class BitmapMatrix
         updateViewBitmapRect(nRect);
 
         /**
-         * 如果还是小于视图宽度，则需要移动到中线
+         * 如果还是小于视图宽度，则需要移动到正正中间
          */
         int nx = 0;
         int ny = 0;
@@ -1197,73 +937,72 @@ public class BitmapMatrix
         return rectMulti(getVisibleShowBitmapRect(), ratio);
     }
 
-    /**
-     * 分割实际的bitmap 为 N x M
-     * X: N
-     * Y: M
-     */
-    private Point getBitmapGridNM()
-    {
-        Rect virtualViewRect = getVirtualViewRect();
-
-        int vw = virtualViewRect.width();
-        int vh = virtualViewRect.height();
-
-        int rw = mRealBitmapRect.width();
-        int rh = mRealBitmapRect.height();
-
-        int m = rw / vw + (rw % vw == 0 ? 0 : 1);
-        int n = rh / vh + (rh % vh == 0 ? 0 : 1);
-
-        return new Point(n, m);
-    }
-
-
-    /**
-     * 获取显示的一个单元格的rect区域
-     * @param n 行
-     * @param m 列
-     * @return 如果返回 null 表示没有这个区域
-     */
-    public Rect getShowUnitRect(int n, int m)
-    {
-        n = n < 0 ? 0 : n;
-        m = m < 0 ? 0 : m;
-
-        int vw = mViewRect.width();
-        int vh = mViewRect.height();
-
-        int bw = mShowBitmapRect.width();
-        int bh = mShowBitmapRect.height();
-
-        int left = Math.min(bw, m * vw);
-        int right = Math.min(bw, left + vw);
-
-        int top = Math.min(bh, n * vh);
-        int bottom = Math.min(bh, top + vh);
-
-        if (left == right || top == bottom) {
-            return null;
-        }
-
-        return new Rect(left, top, right, bottom);
-    }
-
-    /**
-     * 获取实际的 bitmap 单元
-     * @param n row
-     * @param m col
-     * @return 返回 null 表示这个区域为空
-     */
-    public Rect getRealUnitRect(int n, int m)
-    {
-        Rect rect = getShowUnitRect(n, m);
-        if (rect == null) {
-            return null;
-        }
-
-        return rectMulti(rect, getRealImageRatio());
-    }
+//    /**
+//     * 分割实际的bitmap 为 N x M
+//     * X: N
+//     * Y: M
+//     */
+//    private Point getBitmapGridNM()
+//    {
+//        Rect virtualViewRect = getVirtualViewRect();
+//
+//        int vw = virtualViewRect.width();
+//        int vh = virtualViewRect.height();
+//
+//        int rw = mRealBitmapRect.width();
+//        int rh = mRealBitmapRect.height();
+//
+//        int m = rw / vw + (rw % vw == 0 ? 0 : 1);
+//        int n = rh / vh + (rh % vh == 0 ? 0 : 1);
+//
+//        return new Point(n, m);
+//    }
+//
+//    /**
+//     * 获取显示的一个单元格的rect区域
+//     * @param n 行
+//     * @param m 列
+//     * @return 如果返回 null 表示没有这个区域
+//     */
+//    public Rect getShowUnitRect(int n, int m)
+//    {
+//        n = n < 0 ? 0 : n;
+//        m = m < 0 ? 0 : m;
+//
+//        int vw = mViewRect.width();
+//        int vh = mViewRect.height();
+//
+//        int bw = mShowBitmapRect.width();
+//        int bh = mShowBitmapRect.height();
+//
+//        int left = Math.min(bw, m * vw);
+//        int right = Math.min(bw, left + vw);
+//
+//        int top = Math.min(bh, n * vh);
+//        int bottom = Math.min(bh, top + vh);
+//
+//        if (left == right || top == bottom) {
+//            return null;
+//        }
+//
+//        return new Rect(left, top, right, bottom);
+//    }
+//
+//    /**
+//     * 获取实际的 bitmap 单元
+//     * @param n row
+//     * @param m col
+//     * @return 返回 null 表示这个区域为空
+//     */
+//    public Rect getRealUnitRect(int n, int m)
+//    {
+//        Rect rect = getShowUnitRect(n, m);
+//        if (rect == null) {
+//            return null;
+//        }
+//
+//        return rectMulti(rect, getRealImageRatio());
+//    }
 
     /**
      * 获取真实bitmap 和原图之间宽的比例
@@ -1307,13 +1046,13 @@ public class BitmapMatrix
         return rectMulti(rect, wr);
     }
 
-    /**
-     * 获取原图的单元格
-     */
-    private Rect getImageUnitRect(int n, int m)
-    {
-        return toImageRect(getRealUnitRect(n, m));
-    }
+//    /**
+//     * 获取原图的单元格
+//     */
+//    private Rect getImageUnitRect(int n, int m)
+//    {
+//        return toImageRect(getRealUnitRect(n, m));
+//    }
 
     private void debug(Canvas canvas)
     {
@@ -1348,6 +1087,7 @@ public class BitmapMatrix
             return null;
         }
 
+        Log.e(TAG, "Before Decode: "  + System.currentTimeMillis());
         BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
         tmpOptions.inPreferredConfig = mBitmapConfig;
         tmpOptions.inSampleSize = mSampleSize;
@@ -1357,6 +1097,7 @@ public class BitmapMatrix
 
         Log.e(TAG, "Rect: " + rect);
         Log.e(TAG, "Bitmap: W( " + bitmap.getWidth() + ", " + bitmap.getHeight()+ ")");
+        Log.e(TAG, "After Decode: "  + System.currentTimeMillis());
 
         return bitmap;
     }
