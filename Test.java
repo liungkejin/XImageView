@@ -11,7 +11,10 @@ import android.graphics.BitmapRegionDecoder;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Point;
 import android.graphics.Rect;
+import android.graphics.RectF;
+import android.os.Message;
 import android.util.Log;
 
 import java.io.ByteArrayInputStream;
@@ -21,6 +24,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 /**
  * Bitmap 管理，
@@ -104,7 +109,10 @@ public class BitmapMatrix
      */
     public void scale(int cx, int cy, float sc)
     {
-        scaleShowBitmap(cx, cy, sc);
+        sc *= (sc < 1) ? 0.99f : 1.01f;
+//        if (Math.abs(1 - sc) > 0.0008) {
+            scaleShowBitmap(cx, cy, sc);
+//        }
 //        debug();
     }
 
@@ -146,6 +154,15 @@ public class BitmapMatrix
 
     private class BitmapUnit
     {
+        /**
+         * 当前bitmap 的SampleSize,
+         * 如果此时的SampleSize 和全局的SampleSize不相等，则需要重新decode一次
+         */
+        public int mCurSampleSize = 0;
+
+        /**
+         * 目前的 mBitmap
+         */
         public Bitmap mBitmap = null;
 
         /**
@@ -165,6 +182,8 @@ public class BitmapMatrix
 
             mBitmap = null;
             mThumbBitmap = null;
+
+            mCurSampleSize = 0;
         }
 
         private void recycle()
@@ -173,8 +192,11 @@ public class BitmapMatrix
                 mBitmap.recycle();
             }
             mBitmap = null;
+            mCurSampleSize = 0;
         }
+
     }
+
 
     /**
      * 策略：
@@ -186,6 +208,15 @@ public class BitmapMatrix
      */
     private class BitmapGrid
     {
+
+        private LoadingThread mLoadingThread = new LoadingThread();
+
+        /**
+         * 缩略图时的 SampleSize
+         */
+        private int mThumbSampleSize = 0;
+
+
         /**
          * 总共的单元格数
          */
@@ -196,6 +227,28 @@ public class BitmapMatrix
          * 所有的单元格
          */
         private BitmapUnit [][] mGrids = null;
+
+        /**
+         * 获取bitmap
+         */
+        private Bitmap getGridBitmap(int n, int m)
+        {
+            if (isValidGrid(n, m)) {
+                if (mGrids[n][m].mCurSampleSize != mSampleSize) {
+                    mLoadingThread.addTask(n, m);
+                }
+
+                if (mSampleSize == mThumbSampleSize) {
+                    return mGrids[n][m].mThumbBitmap;
+                }
+
+                return mGrids[n][m].mBitmap != null &&
+                        !mGrids[n][m].mBitmap.isRecycled() ?
+                        mGrids[n][m].mBitmap : mGrids[n][m].mThumbBitmap;
+            }
+
+            return null;
+        }
 
         private void initializeBitmapGrid()
         {
@@ -232,11 +285,16 @@ public class BitmapMatrix
              * 初始化缩略图
              */
             Log.e(TAG, "Before Thumb: " + System.currentTimeMillis());
+            /**
+             * 保存缩略图时的值
+             */
+            mThumbSampleSize = mSampleSize;
             for (int n = 0; n < mN; ++n) {
                 for (int m = 0; m < mM; ++m) {
                     Rect rect = getUnitRect(n, m);
                     if (rect != null) {
-                        mGrids[n][m].mThumbBitmap = decodeRectBitmap(rect);
+                        mGrids[n][m].mCurSampleSize = mSampleSize;
+                        mGrids[n][m].mThumbBitmap = decodeRectBitmap(rect, mGrids[n][m].mCurSampleSize);
                     }
                 }
             }
@@ -323,24 +381,35 @@ public class BitmapMatrix
 
             Rect visible = getVisibleGrid();
 
-            int sn = Math.max(visible.top-1, 0);
-            int sm = Math.max(visible.left-1, 0);
-            int en = Math.min(visible.bottom+1, mN);
-            int em = Math.min(visible.right+1, mM);
+            int sn = Math.max(visible.top - 1, 0);
+            int sm = Math.max(visible.left - 1, 0);
+            int en = Math.min(visible.bottom + 1, mN);
+            int em = Math.min(visible.right + 1, mM);
 
             recycleInvisibleGrids(visible);
 
             for (int n = sn; n <= en; ++n) {
                 for (int m = sm; m <= em; ++m) {
-                    if (isValidGrid(n, m)) {
-                        Rect rect = getUnitRect(n, m);
-                        if (mGrids[n][m].mBitmap != null) {
-                            mGrids[n][m].recycle();
-                        }
-                        mGrids[n][m].mBitmap = decodeRectBitmap(rect);
-                    }
+//                    mLoadingThread.addTask(n, m);
+//                    if (isValidGrid(n, m)) {
+//                        Rect rect = getUnitRect(n, m);
+//                        if (mGrids[n][m].mBitmap != null) {
+//                            mGrids[n][m].recycle();
+//                        }
+//                        mGrids[n][m].mBitmap = decodeRectBitmap(rect);
+//                    }
                 }
             }
+        }
+
+        /**
+         * 判断是否是可见的单元格
+         */
+        private boolean isVisibleUnit(int n, int m)
+        {
+            Rect v = getVisibleGrid();
+
+            return n >= v.top && n <= v.bottom && m >= v.left && m <= v.right;
         }
 
         /**
@@ -355,20 +424,20 @@ public class BitmapMatrix
             int em = visible.right;
 
             /**
-             * 如果上一次有不可见的，并距离可见区域 > 2 的，就释放掉
+             * 如果上一次有不可见的，并距离可见区域 > 1 的，就释放掉
              * +--+--+--+--+--+
-             * |XX|00|11|11|00|
+             * |XX|XX|11|11|XX|
              * +--+--+--+--+--+
-             * |XX|00|11|11|00|
+             * |XX|XX|11|11|XX|
              * +--+--+--+--+--+
-             * |XX|00|00|00|00|
+             * |XX|XX|XX|XX|XX|
              * +--+--+--+--+--+
              * XX 部分就是可以被释放掉的区域
              */
             for (int i = 0; i < mN; ++i) {
                 for (int j = 0; j < mM; ++j) {
-                    if (sn - i >= 2 || i - en >= 2
-                            || sm - j >= 2 || j - em >= 2) {
+                    if (sn - i >= 1 || i - en >= 1
+                            || sm - j >= 1 || j - em >= 1) {
                         mGrids[i][j].recycle();
                     }
                 }
@@ -400,8 +469,9 @@ public class BitmapMatrix
             for (int n = sn; n <= en; ++n) {
                 for (int m = sm; m <= em; ++m) {
                     if (isValidGrid(n, m) && mGrids[n][m].mBitmap == null) {
-                        Rect rect = getUnitRect(n, m);
-                        mGrids[n][m].mBitmap = decodeRectBitmap(rect);
+//                        Rect rect = getUnitRect(n, m);
+//                        mGrids[n][m].mBitmap = decodeRectBitmap(rect);
+//                        mLoadingThread.addTask(n, m);
                     }
                 }
             }
@@ -426,21 +496,91 @@ public class BitmapMatrix
             for (int n = sn; n <= en; ++n) {
                 for (int m = sm; m <= em; ++m) {
                     Rect rect = getShowBitmapUnit(n, m);
-                    if (rect != null) {
+                    Bitmap bitmap = getGridBitmap(n, m);
+                    if (rect != null && bitmap != null) {
                         Rect vRect = toViewCoordinate(rect);
+                        canvas.drawBitmap(bitmap, null, vRect, null);
 
-                        if (mGrids[n][m].mBitmap != null) {
-                            canvas.drawBitmap(mGrids[n][m].mBitmap, null, vRect, null);
-                        }
-                        else if (mGrids[n][m].mThumbBitmap != null) {
-                            canvas.drawBitmap(mGrids[n][m].mThumbBitmap, null, vRect, null);
-                        }
-
-                        mPaint.setColor(Color.MAGENTA);
-                        mPaint.setStrokeWidth(2);
-                        canvas.drawRect(vRect, mPaint);
+//                        mPaint.setColor(Color.MAGENTA);
+//                        mPaint.setStrokeWidth(2);
+//                        canvas.drawRect(vRect, mPaint);
                     }
                 }
+            }
+        }
+
+
+        /**
+         * 管理所有的单元格的 bitmap 加载
+         */
+        private class LoadingThread extends BaseThread
+        {
+            private Deque<Point> mLoadingQue = new ArrayDeque<>();
+
+            public synchronized void addTask(int n, int m)
+            {
+                Log.e(TAG, "Add Task " + n + " , " + m);
+                synchronized (this) {
+                    boolean canAdd = true;
+                    for (Point p : mLoadingQue) {
+                        if (p.equals(n, m)) {
+                            canAdd = false;
+                            break;
+                        }
+                    }
+                    if (canAdd) {
+                        mLoadingQue.addLast(new Point(n, m));
+
+                        Log.e(TAG, "add success: Que Size " + mLoadingQue.size());
+                    }
+                }
+
+                if (!mIsRunning) {
+                    startThread();
+                }
+            }
+
+            @Override
+            public void run()
+            {
+                while (mIsRunning) {
+                    if (!mLoadingQue.isEmpty()) {
+                        synchronized (this) {
+                            Point point = mLoadingQue.poll();
+                            int n = point.x;
+                            int m = point.y;
+
+                            if (isValidGrid(n, m) && isVisibleUnit(n, m)) {
+                                Rect rect = getUnitRect(n, m);
+                                if (mGrids[n][m].mBitmap != null) {
+                                    mGrids[n][m].recycle();
+                                }
+                                mGrids[n][m].mCurSampleSize = mSampleSize;
+
+                                if (mSampleSize != mThumbSampleSize) {
+                                    mGrids[n][m].mBitmap = decodeRectBitmap(rect, mGrids[n][m].mCurSampleSize);
+                                }
+
+                                sendMessage(0);
+                            }
+                        }
+                    }
+
+                    try {
+                        Thread.sleep(60);
+                    }
+                    catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            @Override
+            public void handleMessage(Message msg)
+            {
+                /**
+                 * 已经load成功， 需要invalidate 一次
+                 */
             }
         }
     }
@@ -514,7 +654,7 @@ public class BitmapMatrix
         /**
          * For Debug
          */
-        debug(canvas);
+//        debug(canvas);
     }
 
     /**
@@ -538,6 +678,7 @@ public class BitmapMatrix
      * 在计算的时候，需要缩放比例来
      */
     private Rect mShowBitmapRect = new Rect();
+    private RectF mShowBitmapRectF = new RectF();
 
     /**
      * 实际bitmap的宽高, 这个宽高就是 原图设置采样率后的宽高
@@ -579,6 +720,8 @@ public class BitmapMatrix
          */
         ratio = ratio < 1 ? 1f : ratio;
         mShowBitmapRect.set(0, 0, (int) (iw / ratio), (int) (ih / ratio));
+        mShowBitmapRectF.set(mShowBitmapRect);
+
         /**
          * 保存初始大小
          */
@@ -666,6 +809,7 @@ public class BitmapMatrix
         }
 
         mShowBitmapRect.set(mInitShowBitmapRect);
+        mShowBitmapRectF.set(mShowBitmapRect);
 
         int left = (mShowBitmapRect.width() - mViewRect.width())/2;
         int right = left + mViewRect.width();
@@ -685,7 +829,7 @@ public class BitmapMatrix
         /**
          * 如果图片的长或宽，全在视图内，则以中线进行缩放
          */
-        Rect oRect = toViewCoordinate(mShowBitmapRect);
+        RectF oRect = toViewCoordinate(mShowBitmapRectF);
 
         /**
          * 如果宽全在视图内
@@ -701,16 +845,20 @@ public class BitmapMatrix
             cy = mViewRect.centerY();
         }
 
+        Log.e(TAG, "Center (" + cx + " , " + cy + ")");
+        Log.e(TAG, "oRect: " + oRect);
+
         /**
          * 以cx, cy缩放
          */
-        int left = (int) Math.floor(cx - (cx - oRect.left) * sc);
-        int right = (int) (left + (oRect.width() * sc));
+        float left = (cx - Math.abs(cx - oRect.left) * sc);
+        float right = (cx + Math.abs(oRect.right - cx) * sc);
 
-        int top = (int) Math.floor(cy - (cy - oRect.top) * sc);
-        int bottom = (int) ((right - left) * getImageRatio() + top);
+        float top = (cy - Math.abs(cy - oRect.top) * sc);
+        float bottom = ((right - left) * getImageRatio() + top);
 
-        Rect nRect = new Rect(left, top, right, bottom);
+        RectF nRect = new RectF(left, top, right, bottom);
+        Log.e(TAG, "nRect: " + nRect);
 
         if (nRect.width() < mInitShowBitmapRect.width() ||
                 nRect.height() < mInitShowBitmapRect.height()) {
@@ -726,9 +874,9 @@ public class BitmapMatrix
         /**
          * 如果还是小于视图宽度，则需要移动到正正中间
          */
-        int nx = 0;
-        int ny = 0;
-        Rect aRect = toViewCoordinate(mShowBitmapRect);
+        float nx = 0;
+        float ny = 0;
+        RectF aRect = toViewCoordinate(mShowBitmapRectF);
         if (aRect.width() < mViewRect.width()) {
             nx = mViewRect.centerX() - aRect.centerX();
         }
@@ -757,13 +905,14 @@ public class BitmapMatrix
         updateViewBitmapRect(aRect);
 
         Log.e(TAG, "After Scale Rect: " + nRect + " Show: " + mShowBitmapRect);
+        Log.e(TAG, "Visible Rect: " + mViewBitmapRect);
     }
 
     /**
      * 更新ViewBitmapRect
      * @param rect ShowBitmapRect相对view坐标系的rect
      */
-    private void updateViewBitmapRect(Rect rect)
+    private void updateViewBitmapRect(RectF rect)
     {
         Rect vRect = new Rect(0, 0, mViewRect.width(), mViewRect.height());
         vRect.left -= rect.left;
@@ -772,7 +921,8 @@ public class BitmapMatrix
         vRect.bottom = vRect.top + mViewRect.height();
 
         mViewBitmapRect.set(vRect);
-        mShowBitmapRect.set(new Rect(0, 0, rect.width(), rect.height()));
+        mShowBitmapRectF.set(0, 0, rect.width(), rect.height());
+        mShowBitmapRect.set(0, 0, (int)rect.width(), (int) rect.height());
     }
 
     /**
@@ -855,6 +1005,20 @@ public class BitmapMatrix
         int bottom = top + rect.height();
 
         return new Rect(left, top, right, bottom);
+    }
+
+    private RectF toViewCoordinate(RectF rect)
+    {
+        if (rect == null) {
+            return new RectF();
+        }
+
+        float left = rect.left - mViewBitmapRect.left;
+        float right = left + rect.width();
+        float top = rect.top - mViewBitmapRect.top;
+        float bottom = top + rect.height();
+
+        return new RectF(left, top, right, bottom);
     }
 
     /**
@@ -1081,7 +1245,7 @@ public class BitmapMatrix
     /**
      * 从解码出一块bitmap
      */
-    public Bitmap decodeRectBitmap(Rect rect)
+    public Bitmap decodeRectBitmap(Rect rect, int sampleSize)
     {
         if (rect == null) {
             return null;
@@ -1090,7 +1254,7 @@ public class BitmapMatrix
         Log.e(TAG, "Before Decode: "  + System.currentTimeMillis());
         BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
         tmpOptions.inPreferredConfig = mBitmapConfig;
-        tmpOptions.inSampleSize = mSampleSize;
+        tmpOptions.inSampleSize = sampleSize;
         tmpOptions.inJustDecodeBounds = false;
 
         Bitmap bitmap = mDecoder.decodeRegion(rect, tmpOptions);
@@ -1108,7 +1272,7 @@ public class BitmapMatrix
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                        (int)(r.right*ratio), (int) (r.bottom*ratio));
+                (int)(r.right*ratio), (int) (r.bottom*ratio));
     }
 
     /**
