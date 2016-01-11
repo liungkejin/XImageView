@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2015 Shanghai Sweetyi Information Technology Co. Ltd.  All Rights Reserved
- * 版权声明 (c) 2015 上海甜邑信息技术有限公司. 版权所有! 保留最终解释权.
- */
-
 package cn.kejin.android.views;
 
 import android.content.Context;
@@ -30,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashMap;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -55,6 +51,23 @@ public class SuperImageView extends View
 
     private BitmapManager mBitmapManager = null;
 
+    /**
+     * 当前的处理动作, 为了保证能获取到正确的 view Width, Height
+     * 将处理过程都放在到 onDraw() 中
+     */
+    private int mProcessAction = PA_NONE;
+
+    private static final int PA_NONE = 237;
+
+    /**
+     * 初始化，当设置了新的图片后，执行此动作，重新初始化
+     */
+    private static final int PA_INIT = 435;
+
+    /**
+     * 刷新一次动作
+     */
+    private static final int PA_FRESH = 336;
 
 
     public SuperImageView(Context context)
@@ -80,6 +93,11 @@ public class SuperImageView extends View
         Context context = getContext();
 
         mSimpleDetector = new SimpleGestureDetector(context, mGestureListener);
+    }
+
+    public void setImage(String path, Bitmap.Config config)
+    {
+        //
     }
 
     public void setInputStream(InputStream is)
@@ -120,6 +138,17 @@ public class SuperImageView extends View
     @Override
     protected void onDraw(Canvas canvas)
     {
+
+        switch (mProcessAction) {
+            case PA_INIT:
+                break;
+
+            case PA_FRESH:
+                break;
+
+        }
+
+
         if (mBitmapManager == null) {
             return;
         }
@@ -305,6 +334,8 @@ public class SuperImageView extends View
     protected void onDetachedFromWindow()
     {
         super.onDetachedFromWindow();
+
+        mBitmapManager.recycleAll();
     }
 
 
@@ -326,6 +357,8 @@ public class SuperImageView extends View
         private BitmapRegionDecoder mDecoder = null;
 
         private InputStream mInputStream = null;
+
+        private HashMap<Integer, Rect> mSampleSizeMap = new HashMap<>();
 
 
         /**
@@ -443,6 +476,13 @@ public class SuperImageView extends View
             drawRegionBitmap(canvas);
         }
 
+        /**
+         * 释放所有内存，停止线程
+         */
+        public void recycleAll()
+        {
+            mBitmapGrid.recycle();
+        }
 
         private BitmapGrid mBitmapGrid = new BitmapGrid();
 
@@ -543,6 +583,16 @@ public class SuperImageView extends View
                 }
 
                 return null;
+            }
+
+            private void recycle()
+            {
+                mLoadingThread.stopThread();
+                for(int i = 0; i < mN; ++i) {
+                    for (int j = 0; j < mM; ++j) {
+                        mGrids[i][j].recycleAll();
+                    }
+                }
             }
 
             private void initializeBitmapGrid()
@@ -708,14 +758,12 @@ public class SuperImageView extends View
             private void drawVisibleGrid(Canvas canvas)
             {
                 Log.e(TAG, "Before Drawing: " + System.currentTimeMillis());
-                if (mGrids == null) {
+                if (mGrids == null || mImageRect.width() <= 0 || mImageRect.height() <= 0) {
                     return;
                 }
 
                 Rect visible = getVisibleGrid();
-                Log.e(TAG, "Before Recycler: " + System.currentTimeMillis());
                 recycleInvisibleGrids(visible);
-                Log.e(TAG, "After Recycler: " + System.currentTimeMillis());
 
                 int sn = visible.top;
                 int sm = visible.left;
@@ -752,10 +800,12 @@ public class SuperImageView extends View
                  * 1: 进行解码队列中的单元格
                  * 2: 进行解码所有的单元格的缩略图
                  */
-                private int mLoadAction = 0;
+                private int mLoadAction = ACTION_NONE;
                 private final static int ACTION_NONE = 0;
                 private final static int ACTION_LOAD = 1;
                 private final static int ACTION_INIT = 2;
+
+                private boolean mIsRunning = false;
 
                 private Deque<Point> mLoadingQue = new ArrayDeque<>();
 
@@ -783,57 +833,68 @@ public class SuperImageView extends View
                     /**
                      * 如果当前没有在解码缩略图，而且没有在解码队列中的单元格，就开启线程
                      */
-                    if (mLoadAction == ACTION_NONE &&
-                            !mLoadingQue.isEmpty()) {
-                        startAction(ACTION_LOAD);
-                    }
+                    startThread(ACTION_LOAD);
                 }
 
                 public synchronized void loadThumbBitmap()
                 {
-                    startAction(ACTION_INIT);
+                    startThread(ACTION_INIT);
                 }
 
-                private synchronized void startAction(int action)
+                private synchronized void startThread(int action)
                 {
-                    if (action == ACTION_NONE) {
-                        stopThread();
-                        return;
-                    }
-
-                    if (mLoadAction != ACTION_NONE) {
-                        mLoadAction = action;
+                    /**
+                     * 如果正在执行 init 就不能 load
+                     */
+                    if (mLoadAction == ACTION_INIT && mIsRunning) {
                         return;
                     }
 
                     mLoadAction = action;
+                    if (mIsRunning) {
+                        return;
+                    }
+
+                    mIsRunning = true;
                     new Thread(this).start();
                 }
 
                 private synchronized void stopThread()
                 {
+                    mIsRunning = false;
                     mLoadAction = ACTION_NONE;
                 }
 
                 @Override
                 public void run()
                 {
-                    while (mLoadAction != ACTION_NONE) {
+                    while (mIsRunning) {
                         switch (mLoadAction) {
                             case ACTION_INIT:
                                 decodeThumbUnitBitmap();
                                 postInvalidate();
+
+                                mLoadAction = ACTION_NONE;
                                 break;
 
                             case ACTION_LOAD:
-                                while (!mLoadingQue.isEmpty()) {
+                                while (mIsRunning && !mLoadingQue.isEmpty()) {
                                     synchronized (this) {
                                         Point point = mLoadingQue.poll();
                                         decodeVisibleUnitBitmap(point.x, point.y);
                                     }
+
+                                    try {
+                                        Thread.sleep(300);
+                                    }
+                                    catch (Exception e) {
+                                        e.printStackTrace();
+                                    }
                                 }
                                 Log.e(TAG, "add success: Que Size " + mLoadingQue.size());
                                 postInvalidate();
+
+                                mLoadAction = ACTION_NONE;
                                 break;
 
                             default:
@@ -849,8 +910,7 @@ public class SuperImageView extends View
                         }
                     }
 
-                    mLoadAction = ACTION_NONE;
-
+                    mIsRunning = false;
                 }
             }
 
@@ -860,6 +920,7 @@ public class SuperImageView extends View
              */
             private void decodeVisibleUnitBitmap(int n, int m)
             {
+                long before = System.currentTimeMillis();
                 if (isValidGrid(n, m) && isVisibleUnit(n, m)) {
                     Rect rect = getUnitRect(n, m);
                     if (mGrids[n][m].mBitmap != null) {
@@ -871,6 +932,8 @@ public class SuperImageView extends View
                         mGrids[n][m].mBitmap = decodeRectBitmap(rect, mGrids[n][m].mCurSampleSize);
                     }
                 }
+
+                Log.e(TAG, "Decode Spend Time: " + (System.currentTimeMillis() - before));
             }
 
             /**
@@ -1025,19 +1088,14 @@ public class SuperImageView extends View
         }
 
         /**
-         * 当缩放结束后，需要重新解码最新的bitmap
+         * 获取当前的SampleSize 值
          */
-        private void updateRealBitmapRect()
+        private int getCurSampleSize()
         {
             int iw = mImageRect.width();
             int ih = mImageRect.height();
             int bw = mShowBitmapRect.width();
             int bh = mShowBitmapRect.height();
-
-            if (mDecoder == null ||
-                    iw == 0 || ih == 0 || bw <= 0 || bh <= 0) {
-                return;
-            }
 
             /**
              * 以 bitmap 的宽高为标准
@@ -1047,11 +1105,42 @@ public class SuperImageView extends View
              * 求出 SampleSize
              */
             int width = (int) (iw * 1.0f / ih * bh);
-            int sampleSize = (width > bw)? getSampleSize(iw / bw) : getSampleSize(ih / bh);
+            int sampleSize = (width > bw)? computeSampleSize(iw / bw) : computeSampleSize(ih / bh);
             if (sampleSize < 1) {
                 sampleSize = 1;
             }
 
+            return sampleSize;
+        }
+
+        /**
+         * 当缩放结束后，需要重新解码最新的bitmap
+         */
+        private void updateRealBitmapRect()
+        {
+//            int iw = mImageRect.width();
+//            int ih = mImageRect.height();
+//            int bw = mShowBitmapRect.width();
+//            int bh = mShowBitmapRect.height();
+//
+//            if (mDecoder == null) {
+//                return;
+//            }
+//
+//            /**
+//             * 以 bitmap 的宽高为标准
+//             * 分别以 宽高为标准，计算对应的的宽高
+//             * 如果是宽图, 则以View的宽为标准
+//             * 否则为高图， 以view的高为标准
+//             * 求出 SampleSize
+//             */
+//            int width = (int) (iw * 1.0f / ih * bh);
+//            int sampleSize = (width > bw)? computeSampleSize(iw / bw) : computeSampleSize(ih / bh);
+//            if (sampleSize < 1) {
+//                sampleSize = 1;
+//            }
+
+            int sampleSize = getCurSampleSize();
             if (sampleSize == mSampleSize) {
                 return;
             }
@@ -1060,15 +1149,15 @@ public class SuperImageView extends View
             /**
              * 获取 这个sampleSize 时的真实的 bitmap的宽高
              */
-            Log.e(TAG, "Before Just Bounds: " + System.currentTimeMillis());
-            BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
-            tmpOptions.inPreferredConfig = mBitmapConfig;
-            tmpOptions.inSampleSize = mSampleSize;
-            tmpOptions.inJustDecodeBounds = true;
-
-            BitmapFactory.decodeStream(mInputStream, null, tmpOptions);
-
-            mRealBitmapRect.set(0, 0, tmpOptions.outWidth, tmpOptions.outHeight);
+//            Log.e(TAG, "Before Just Bounds: " + System.currentTimeMillis());
+//            BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
+//            tmpOptions.inPreferredConfig = mBitmapConfig;
+//            tmpOptions.inSampleSize = mSampleSize;
+//            tmpOptions.inJustDecodeBounds = true;
+//
+//            BitmapFactory.decodeStream(mInputStream, null, tmpOptions);
+//
+            mRealBitmapRect.set(rectMulti(mImageRect, 1f/mSampleSize));
             Log.e(TAG, "After Just Bounds: " + System.currentTimeMillis());
             Log.e(TAG, "RealBitmapRect: " + mRealBitmapRect);
             Log.e(TAG, "-----------------------------------------------");
@@ -1416,7 +1505,7 @@ public class SuperImageView extends View
         /**
          * 根据比率来获得合适的采样率, 因为采样率都是以 2^n 来定的
          */
-        private int getSampleSize(int size)
+        private int computeSampleSize(int size)
         {
             int sample = 1;
             while ((size / 2) != 0) {
@@ -1471,6 +1560,39 @@ public class SuperImageView extends View
             }
         }
 
+        public void setImage(String path, Bitmap.Config config)
+        {
+            try {
+                mDecoder = BitmapRegionDecoder.newInstance(path, false);
+                mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
+
+//                BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
+//                tmpOptions.inPreferredConfig = config == null ? Bitmap.Config.RGB_565 : config;
+//                tmpOptions.inJustDecodeBounds = true;
+//                BitmapFactory.decodeStream(is, null, tmpOptions);
+
+//                mDecoder.decodeRegion()
+//
+//                Log.e(TAG, "W: " + tmpOptions.outWidth +" H " + tmpOptions.outHeight);
+
+                Log.e(TAG, "ImageRect: " + mImageRect);
+            }
+            catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        /**
+         * 一开始就先得到所有的SampleSize 所对应的 width 和height 值
+         */
+        private void getAllSampleSize()
+        {
+            mSampleSizeMap.clear();
+
+//            setView();
+
+        }
+
         public void setImageFromInputStream(InputStream is, Bitmap.Config config)
         {
             if (is == null) {
@@ -1478,15 +1600,24 @@ public class SuperImageView extends View
             }
 
             try {
+
                 mDecoder = BitmapRegionDecoder.newInstance(is, false);
+                mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
 
                 BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
                 tmpOptions.inPreferredConfig = config == null ? Bitmap.Config.RGB_565 : config;
                 tmpOptions.inJustDecodeBounds = true;
-                BitmapFactory.decodeStream(is, null, tmpOptions);
+                tmpOptions.inSampleSize=16;
 
-                mImageRect.set(0, 0, tmpOptions.outWidth, tmpOptions.outHeight);
+                Bitmap bitmap = mDecoder.decodeRegion(new Rect(0, 0, mImageRect.width(), 1), tmpOptions);
 
+                Log.e(TAG, "Bitmapp: " + (bitmap == null ? " null " : new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight())));
+//                BitmapFactory.decodeStream(is, null, tmpOptions);
+
+                bitmap = mDecoder.decodeRegion(new Rect(0, 0, 1, mImageRect.height()), tmpOptions);
+
+                Log.e(TAG, "Bitmapp: " + (bitmap == null ? " null " : new Rect(0, 0, bitmap.getWidth(), bitmap.getHeight())));
+                Log.e(TAG, "W: " + tmpOptions.outWidth +" H " + tmpOptions.outHeight);
                 mInputStream = is;
                 Log.e(TAG, "ImageRect: " + mImageRect);
             }
