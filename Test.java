@@ -34,16 +34,21 @@ import java.util.ArrayList;
 
 /**
  * 能显示大长图
- * TODO: 1. 优化Loading Bitmap
- * TODO: 2. 双击
- * TODO: 3. 优化缩放
- * TODO: 4. 定义各种样式
+ * TODO: 双击操作
+ * TODO: 限制缩放等级
+ * TODO: 到边界返回false
+ * TODO: 自定义初始化状态
+ * TODO: 滑动惯性
+ * TODO: 优化代码
+ * TODO: 显示正在加载， 并增加接口
  */
 public class SuperImageView extends View
 {
     public final static String TAG = "SuperImageView";
 
     private final static String THREAD_NAME = "SuperImageLoad";
+
+    private final Object mQueueLock = new Object();
 
     /**
      * Gesture Detector
@@ -107,7 +112,7 @@ public class SuperImageView extends View
     {
         Context context = getContext();
 
-        mSimpleDetector = new SimpleGestureDetector(context, mGestureListener);
+        mSimpleDetector = new SimpleGestureDetector(context, mBitmapManager);
 
         mLoadingThread = new HandlerThread(THREAD_NAME);
         mLoadingThread.start();
@@ -115,193 +120,30 @@ public class SuperImageView extends View
         mLoadingHandler = new Handler(mLoadingThread.getLooper());
     }
 
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event)
+    {
+
+        return super.dispatchTouchEvent(event);
+    }
 
     @Override
     public boolean onTouchEvent(MotionEvent event)
     {
         mSimpleDetector.onTouchEvent(event);
-
         /**
-         * 到达边界时返回false
+         * TODO: 到达边界时返回false
          */
-        return true;
+        return true; //(event.getPointerCount() == 1 && mBitmapManager.isReachedBorder());
     }
-
-    /**
-     * 当前要Draw的状态，
-     * 1. 显示完全（缩略图）
-     * 2. 手指放大，拖动查看
-     * 3. 放大或者缩小到适应屏幕，
-     *
-     * 如果状态为1, 双击后状态为3,
-     * 如果状态为3，双击后状态为1，
-     * 1,3状态都可以是 2 的初始状态
-     * 在2状态双击会回到状态1
-     */
-    private int mDrawState = STATE_THUMB;
-
-    private final static int STATE_THUMB    = 0x11;
-    private final static int STATE_NORMAL   = 0x12;
-    private final static int STATE_FULL     = 0x13;
 
     @Override
     protected void onDraw(Canvas canvas)
     {
-//        synchronized (mQueueLock)
-//        {
-//            switch (mProcessAction) {
-//                case PA_SET_VIEW:
-//                    mBitmapManager.setView(getWidth(), getHeight());
-//                    mBitmapManager.drawVisibleBitmap(canvas);
-//                    mProcessAction = PA_NONE;
-//                    break;
-//
-//                case PA_FRESH:
-//                    break;
-//            }
-//        }
 
         mBitmapManager.setView(getWidth(), getHeight());
         mBitmapManager.drawVisibleBitmap(canvas);
-//
-//        mBitmapManager.drawVisibleBitmap(canvas);
-//
-//        switch (mDrawState) {
-//            case STATE_THUMB:
-//                drawFullState(canvas);
-//                break;
-//
-//            case STATE_NORMAL:
-//                drawNormalState(canvas);
-//                break;
-//
-//            case STATE_FULL:
-//                break;
-//
-//        }
-
     }
-
-    private final Object mQueueLock = new Object();
-    private void postInvalidate(int action)
-    {
-        synchronized (mQueueLock) {
-            mProcessAction = action;
-            postInvalidate();
-        }
-    }
-
-    @Override
-    protected void onSizeChanged(int w, int h, int oldw, int oldh)
-    {
-        super.onSizeChanged(w, h, oldw, oldh);
-        postInvalidate(PA_SET_VIEW);
-    }
-
-
-    /**
-     * 画缩略图
-     */
-    private void drawFullState(Canvas canvas)
-    {
-    }
-
-
-    private void drawNormalState(Canvas canvas)
-    {
-        //
-    }
-
-    /**
-     * 手势监听回调
-     */
-    private SimpleGestureDetector.GestureListener
-            mGestureListener = new SimpleGestureDetector.GestureListener()
-    {
-        @Override
-        public void onTapped(int x, int y)
-        {
-            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y);
-        }
-
-        @Override
-        public void onDoubleClicked(int x, int y)
-        {
-            Log.e(TAG, "On Double Clicked: X: " + x + " Y: " + y);
-
-            if (mBitmapManager == null) {
-                return;
-            }
-
-            /**
-             * TODO: 添加动画
-             */
-            switch (mDrawState) {
-                case STATE_FULL:
-                case STATE_NORMAL:
-                    mDrawState = STATE_THUMB;
-                    invalidate();
-                    break;
-
-                case STATE_THUMB:
-                    mDrawState = STATE_FULL;
-                    invalidate();
-                    break;
-            }
-        }
-
-        @Override
-        public void onMoving(int preX, int preY, int x, int y, int dx, int dy)
-        {
-            if (mBitmapManager == null) {
-                return;
-            }
-
-            mDrawState = STATE_NORMAL;
-
-            mBitmapManager.offsetShowBitmap(dx, dy);
-
-            invalidate();
-        }
-
-        private int mFocusX = 0;
-        private int mFocusY = 0;
-
-        @Override
-        public boolean onScale(ScaleGestureDetector detector, int state)
-        {
-            if (mBitmapManager == null) {
-                return true;
-            }
-
-            mDrawState = STATE_NORMAL;
-            /**
-             * 始终以当前显示区域的中心点为中心进行缩放
-             */
-            float factor = detector.getScaleFactor();
-            switch (state) {
-                case STATE_BEG:
-                    mFocusX = (int) detector.getFocusX();
-                    mFocusY = (int) detector.getFocusY();
-                    break;
-
-                case STATE_ING:
-                    mBitmapManager.scaleShowBitmap(mFocusX, mFocusY, factor);
-                    invalidate();
-                    break;
-
-                case STATE_END:
-                    /**
-                     * 当缩放结束后，计算最新的的SampleSize, 需要重新解码最新的bitmap
-                     */
-                    mBitmapManager.updateSampleSize();
-                    invalidate();
-                    break;
-            }
-
-            return true;
-        }
-    };
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec)
@@ -410,7 +252,7 @@ public class SuperImageView extends View
     }
 
 
-    public class BitmapManager
+    private class BitmapManager implements SimpleGestureDetector.GestureListener
     {
         private final static String TAG = "BitmapManager";
 
@@ -758,6 +600,15 @@ public class SuperImageView extends View
             mShowBitmapRect.set(0, 0, (int) rect.width(), (int) rect.height());
         }
 
+        /**
+         * 判断是否已经在边界, 这也可以判断是那个方向到达了边界
+         */
+        private boolean isReachedBorder()
+        {
+            return mViewBitmapRect.left == 0 || mViewBitmapRect.top == 0 ||
+                    mViewBitmapRect.right == mShowBitmapRect.right ||
+                    mViewBitmapRect.bottom == mShowBitmapRect.bottom;
+        }
 
         /**
          * 画可见区域的的Bitmap
@@ -962,6 +813,54 @@ public class SuperImageView extends View
             tmpOptions.inJustDecodeBounds = false;
 
             return mDecoder.decodeRegion(rect, tmpOptions);
+        }
+
+        /********************** Gesture Listener ******************************/
+
+        @Override
+        public void onTapped(int x, int y)
+        {
+            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y);
+        }
+
+        @Override
+        public void onDoubleClicked(int x, int y)
+        {
+            Log.e(TAG, "On Double Clicked X: " + x + " Y: " + y);
+        }
+
+        @Override
+        public void onMoving(int preX, int preY, int x, int y, int dx, int dy)
+        {
+            offsetShowBitmap(dx, dy);
+            invalidate();
+        }
+
+        @Override
+        public boolean onScale(ScaleGestureDetector detector, int state)
+        {
+            float factor = detector.getScaleFactor();
+            switch (state) {
+                case STATE_BEG:
+//                    mFocusX = (int) detector.getFocusX();
+//                    mFocusY = (int) detector.getFocusY();
+                    break;
+
+                case STATE_ING:
+                    mBitmapManager.scaleShowBitmap((int) detector.getFocusX(), (int) detector.getFocusY(), factor);
+                    invalidate();
+                    break;
+
+                case STATE_END:
+                    /**
+                     * 当缩放结束后，计算最新的的SampleSize, 需要重新解码最新的bitmap
+                     */
+                    mBitmapManager.updateSampleSize();
+                    invalidate();
+                    break;
+            }
+
+            return true;
         }
 
         /*****************************************************************/
@@ -1386,7 +1285,7 @@ public class SuperImageView extends View
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                (int)(r.right*ratio), (int) (r.bottom*ratio));
+                        (int)(r.right*ratio), (int) (r.bottom*ratio));
     }
 
     /**
@@ -1437,5 +1336,37 @@ public class SuperImageView extends View
         float bottom = Math.min(rect2.bottom, rect1.bottom);
 
         return new RectF(left, top, right, bottom);
+    }
+
+
+    private OnActionListener mActionListener = null;
+
+    public void setActionListener(OnActionListener listener)
+    {
+        mActionListener = listener;
+    }
+
+    public interface OnActionListener
+    {
+        /**
+         * 在View上点击了一次（而且没有双击）
+         * @param onImage 是否点击在了有效的图片上
+         */
+        void onTapped(boolean onImage);
+
+        /**
+         * 双击了
+         */
+        void onDoubleClicked();
+
+        /**
+         * setImage 之后， 回调此函数, 如果图片很大，则会初始化一段时间
+         */
+        void onInitializing();
+
+        /**
+         * 初始化完成，图片已经显示
+         */
+        void onInitialzeFinished();
     }
 }
