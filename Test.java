@@ -472,7 +472,7 @@ public class SuperImageView extends View
         /**
          * 实例化 BitmapRegionDecoder, 并拿到原图的宽高
          */
-        private void setImage(InputStream is, Bitmap.Config config)
+        private void setImage(final InputStream is, Bitmap.Config config)
         {
             if (is == null) {
                 return;
@@ -480,17 +480,32 @@ public class SuperImageView extends View
 
             mBitmapConfig = config == null ? Bitmap.Config.RGB_565 : config;
 
-            try {
-                mDecoder = BitmapRegionDecoder.newInstance(is, false);
-                mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
+            long time = System.currentTimeMillis();
 
-                Log.e(TAG, "ImageRect: " + mImageRect);
-            }
-            catch (IOException e) {
-                e.printStackTrace();
-                mDecoder = null;
-                mImageRect.set(0, 0, 0, 0);
-            }
+            mLoadingHandler.post(new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    try {
+                        mDecoder = BitmapRegionDecoder.newInstance(is, false);
+                        mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
+
+                        Log.e(TAG, "ImageRect: " + mImageRect);
+                    }
+                    catch (IOException e) {
+                        e.printStackTrace();
+                        mDecoder = null;
+                        mImageRect.set(0, 0, 0, 0);
+                    }
+
+                    if (mDecoder != null) {
+                        postInvalidate();
+                    }
+                }
+            });
+
+            Log.e(TAG, "Instance Time: " + (System.currentTimeMillis() - time));
         }
 
         /**
@@ -1123,6 +1138,15 @@ public class SuperImageView extends View
                                 postInvalidate();
                             }
                         });
+                    }
+                }
+            }
+
+            private void recycleBitmap()
+            {
+                for(int i = 0; i < mN; ++i) {
+                    for (int j = 0; j < mM; ++j) {
+                        mGrids[i][j].recycle();
                     }
                 }
             }
