@@ -1,5 +1,8 @@
 package cn.kejin.android.views;
 
+import android.animation.Animator;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -17,6 +20,9 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.Animation;
+import android.view.animation.ScaleAnimation;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -34,7 +40,6 @@ import java.util.ArrayList;
 
 /**
  * 能显示大长图
- * TODO: 双击操作
  * TODO: 限制缩放等级
  * TODO: 到边界返回false
  * TODO: 自定义初始化状态
@@ -50,6 +55,8 @@ public class SuperImageView extends View
 
     private final Object mQueueLock = new Object();
 
+    private final static int DOUBLE_SCALE_TIME = 400;
+
     /**
      * Gesture Detector
      */
@@ -57,24 +64,6 @@ public class SuperImageView extends View
 
 
     private BitmapManager mBitmapManager = new BitmapManager();
-
-    /**
-     * 当前的处理动作, 为了保证能获取到正确的 view Width, Height
-     * 将处理过程都放在到 onDraw() 中
-     */
-    private int mProcessAction = PA_NONE;
-
-    private static final int PA_NONE = 237;
-
-    /**
-     * 初始化，当设置了新的图片后，执行此动作，重新初始化
-     */
-    private static final int PA_SET_VIEW = 435;
-
-    /**
-     * 刷新一次动作
-     */
-    private static final int PA_FRESH = 336;
 
     /**
      * 异步处理图片的解码
@@ -252,10 +241,20 @@ public class SuperImageView extends View
     }
 
 
+    /**
+     * 缩放到指定的大小, 起始是以当前的大小为准
+     * 并且以屏幕中心进行缩放
+     */
+    public void scaleTo(float dest, boolean smooth, int smoothTime)
+    {
+        mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
+    }
+
     private class BitmapManager implements SimpleGestureDetector.GestureListener
     {
-        private final static String TAG = "BitmapManager";
-
+        /**
+         * Decoder
+         */
         private BitmapRegionDecoder mDecoder = null;
 
         /**
@@ -310,6 +309,13 @@ public class SuperImageView extends View
          */
         private BitmapGrid mBitmapGrid = new BitmapGrid();
 
+
+        private ValueAnimator mValueAnimator = null;
+
+        /**
+         * 最大可放大的value
+         */
+        private float mMaxScaleValue = 1f;
 
         /**
          * 实例化 BitmapRegionDecoder, 并拿到原图的宽高
@@ -478,6 +484,7 @@ public class SuperImageView extends View
 
         /**
          * 缩放显示的 bitmap,
+         * TODO: 如果图片本身小于视图，则需要允许可以缩放至小于视图的大小
          * @param cx 中心点的 x
          * @param cy 中心点的 y
          * @param sc 缩放系数
@@ -562,6 +569,128 @@ public class SuperImageView extends View
             Log.e(TAG, "Visible Rect: " + mViewBitmapRect);
 
             invalidate();
+        }
+
+        /**
+         * 以中心点缩放
+         */
+        private void scaleFromCenterTo(float dest, boolean smooth, long smoothTime)
+        {
+            scaleTo(mViewRect.centerX(), mViewRect.centerY(), dest, smooth, smoothTime);
+        }
+
+        /**
+         * 缩放到指定的大小
+         * TODO: 兼容 API 10, 使用Handler
+         */
+        private float mLastAnimatedValue = 1f;
+        private void scaleTo(final int cx, final int cy,
+                             float dest, boolean smooth, long smoothTime)
+        {
+            if (mDecoder == null) {
+                return;
+            }
+
+            if (mValueAnimator != null && mValueAnimator.isRunning()) {
+                mValueAnimator.end();
+                mValueAnimator.cancel();
+            }
+
+            if (smooth) {
+                mLastAnimatedValue = 1f;
+                ObjectAnimator.ofFloat(1f, dest);
+                mValueAnimator = ValueAnimator.ofFloat(1f, dest);
+                mValueAnimator.setDuration(smoothTime);
+                mValueAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
+
+                mValueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener()
+                {
+                    @Override
+                    public void onAnimationUpdate(ValueAnimator animation)
+                    {
+                        float value = (float) animation.getAnimatedValue();
+                        scaleShowBitmap(cx, cy, value / mLastAnimatedValue);
+                        mLastAnimatedValue = value;
+                    }
+                });
+                mValueAnimator.addListener(new Animator.AnimatorListener()
+                {
+                    @Override
+                    public void onAnimationStart(Animator animation)
+                    {
+                        //
+                    }
+
+                    @Override
+                    public void onAnimationEnd(Animator animation)
+                    {
+                        updateSampleSize();
+                    }
+
+                    @Override
+                    public void onAnimationCancel(Animator animation)
+                    {
+                        updateSampleSize();
+                    }
+
+                    @Override
+                    public void onAnimationRepeat(Animator animation)
+                    {
+
+                    }
+                });
+                mValueAnimator.start();
+            }
+            else {
+                scaleShowBitmap(cx, cy, dest);
+                updateSampleSize();
+            }
+        }
+
+        /**
+         * 缩放到适应屏幕
+         * 如果此时整个图片都在 视图可见区域中, 则放大到占满整个屏幕
+         * 如果整个图片不再可见区域中， 则缩小到整个视图可见大小
+         *
+         * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
+         * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
+         */
+        private void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
+        {
+            float destScale;
+
+            float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
+            float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
+
+            int sw = mShowBitmapRect.width();
+            int sh = mShowBitmapRect.height();
+
+            int tw = mThumbShowBitmapRect.width();
+            int th = mThumbShowBitmapRect.height();
+
+            if (Math.abs(sw - tw) < 5 && Math.abs(sh - th) < 5) {
+                if (mViewBitmapRect.contains(mImageRect)) {
+                    /**
+                     * 如果真实图片就小于视图， 则放大到最小适应屏幕
+                     */
+                    destScale = Math.min(ws, hs);
+                }
+                else {
+                    /**
+                     * 放大到最大适应屏幕
+                     */
+                    destScale = Math.max(ws, hs);
+                }
+            }
+            else {
+                /**
+                 * 缩小到最小图片
+                 */
+                destScale = Math.min(ws, hs);
+            }
+            Log.e(TAG, "Dest Scale: " + destScale);
+
+            scaleTo(cx, cy, destScale, smooth, smoothTime);
         }
 
         /**
@@ -703,6 +832,7 @@ public class SuperImageView extends View
                 return;
             }
             mSampleSize = sampleSize;
+            invalidate();
 
             Log.e(TAG, "Current Sample Size: " + mSampleSize);
         }
@@ -827,6 +957,7 @@ public class SuperImageView extends View
         public void onDoubleClicked(int x, int y)
         {
             Log.e(TAG, "On Double Clicked X: " + x + " Y: " + y);
+            scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
         }
 
         @Override
@@ -847,8 +978,8 @@ public class SuperImageView extends View
                     break;
 
                 case STATE_ING:
-                    mBitmapManager.scaleShowBitmap((int) detector.getFocusX(), (int) detector.getFocusY(), factor);
-                    invalidate();
+                    mBitmapManager.scaleShowBitmap(
+                            (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
                     break;
 
                 case STATE_END:
@@ -856,7 +987,6 @@ public class SuperImageView extends View
                      * 当缩放结束后，计算最新的的SampleSize, 需要重新解码最新的bitmap
                      */
                     mBitmapManager.updateSampleSize();
-                    invalidate();
                     break;
             }
 
@@ -1285,7 +1415,7 @@ public class SuperImageView extends View
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                        (int)(r.right*ratio), (int) (r.bottom*ratio));
+                (int)(r.right*ratio), (int) (r.bottom*ratio));
     }
 
     /**
