@@ -22,13 +22,13 @@ import android.view.View;
 import android.view.ViewParent;
 import android.view.animation.AccelerateDecelerateInterpolator;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.UUID;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -49,6 +49,8 @@ public class SuperImageView extends View
     public final static String TAG = "SuperImageView";
 
     private final static String THREAD_NAME = "SuperImageLoad";
+
+    private final static String TEMP_FILE_NAME = "temp.jpg";
 
     private final Object mQueueLock = new Object();
 
@@ -145,14 +147,6 @@ public class SuperImageView extends View
         super.onSizeChanged(w, h, oldw, oldh);
     }
 
-    private void interceptParentTouchEvent(boolean intercept)
-    {
-        ViewParent parent = getParent();
-        if (parent != null) {
-            parent.requestDisallowInterceptTouchEvent(intercept);
-        }
-    }
-
     @Override
     public boolean dispatchTouchEvent(MotionEvent event)
     {
@@ -223,53 +217,31 @@ public class SuperImageView extends View
         });
     }
 
-    public void setImage(Bitmap bitmap)
+    /**
+     * 劫持输入事件, ViewPager
+     * @param intercept
+     */
+    private void interceptParentTouchEvent(boolean intercept)
     {
-        long stime = System.currentTimeMillis();
-        setImage(bitmap, Bitmap.CompressFormat.PNG);
-        Log.e(TAG, "SetImageTime: " + (System.currentTimeMillis() - stime));
+        ViewParent parent = getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(intercept);
+        }
     }
 
-    public void setImage(Bitmap bitmap,
-                         Bitmap.CompressFormat format)
+    public void setImage(Bitmap bitmap)
     {
-        setImage(bitmap, format, Bitmap.Config.RGB_565);
+        setImage(bitmap, false);
     }
 
     /**
      * Bitmap 转换为 InputStream, 使用 BitmapRegionDecoder 管理
      * @param bitmap 图片
-     * @param format 解码的格式
+     * @param cache 是否需要将bitmap 保存为文件再 转换为InputStream
      */
-    public void setImage(final Bitmap bitmap,
-                         Bitmap.CompressFormat format,
-                         final Bitmap.Config config)
+    public void setImage(final Bitmap bitmap, boolean cache)
     {
-        if (bitmap == null) {
-            return;
-        }
-
-        final Bitmap.CompressFormat finalFormat = format == null ? Bitmap.CompressFormat.JPEG : format;
-        mLoadingHandler.post(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                try {
-                    long stime = System.currentTimeMillis();
-                    ByteArrayOutputStream os = new ByteArrayOutputStream();
-                    bitmap.compress(finalFormat, 100, os);
-                    Log.e(TAG, "Compress Time: " + (System.currentTimeMillis() - stime));
-                    ByteArrayInputStream is = new ByteArrayInputStream(os.toByteArray());
-                    Log.e(TAG, "Compress Time: " + (System.currentTimeMillis() - stime));
-
-                    setImage(is, config);
-                }
-                catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-        });
+        mBitmapManager.setSrcBitmap(bitmap, cache);
     }
 
     /**
@@ -322,7 +294,7 @@ public class SuperImageView extends View
             return;
         }
 
-        mBitmapManager.setImage(is, config);
+        mBitmapManager.setBitmapDecoder(is, config);
     }
 
 
@@ -415,68 +387,86 @@ public class SuperImageView extends View
         /**
          * 重新刷新一次
          */
-        private void refreshView()
+        private synchronized void refreshView()
         {
+            if (mNeedRefreshView) {
+                return;
+            }
+
             mNeedRefreshView = true;
             postInvalidate();
         }
 
         /**
-         * 实例化 BitmapRegionDecoder 或者 Bitmap, 并拿到原图的宽高
+         * 这几个函数的顺序为
+         * onSetImageStart() -> onSetImageFinished() -> setView() -> onSetViewFinished()
          */
-        private void setImageOrBitmap(final InputStream is, final Bitmap bitmap, Bitmap.Config config)
+
+        /**
+         * TODO:
+         */
+
+        /**
+         * 直接设置 Bitmap
+         */
+        private synchronized void setSrcBitmap(final Bitmap bitmap, boolean cache)
         {
             recycleAll();
 
-            if (is == null && bitmap == null) {
+            if (bitmap == null) {
                 refreshView();
+                if (mActionListener != null) {
+                    mActionListener.onSetImageFinished();
+                }
                 return;
             }
 
-            /**
-             * 优先 bitmap
-             */
-            if (bitmap != null) {
+            if (!cache) {
                 mSrcBitmap = bitmap;
                 mImageRect.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
                 refreshView();
             }
             else {
-                mBitmapConfig = config == null ? Bitmap.Config.RGB_565 : config;
-
+                final File tempFile = new File(getContext().getCacheDir(), UUID.randomUUID().toString());
+                tempFile.deleteOnExit();
                 mLoadingHandler.post(new Runnable()
                 {
                     @Override
                     public void run()
                     {
                         try {
-                            mDecoder = BitmapRegionDecoder.newInstance(is, false);
-                            mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
-                        }
-                        catch (IOException e) {
-                            e.printStackTrace();
-                            mDecoder = null;
-                            mImageRect.set(0, 0, 0, 0);
-                        }
+                            FileOutputStream fos = new FileOutputStream(tempFile);
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos);
+                            fos.flush();
+                            fos.close();
 
-                        if (mDecoder != null) {
-                            refreshView();
+                            FileInputStream fis = new FileInputStream(tempFile);
+                            setBitmapDecoder(fis, null);
+                        }
+                        catch (Exception e) {
+                            e.printStackTrace();
                         }
                     }
                 });
             }
         }
 
-        private void setImage(final InputStream is, Bitmap.Config config)
+        /**
+         * 设置 BitmapRegionDecoder
+         */
+        private void setBitmapDecoder(final InputStream is, Bitmap.Config config)
         {
+            recycleAll();
+
             if (is == null) {
+                refreshView();
+                if (mActionListener != null) {
+                    mActionListener.onSetImageFinished();
+                }
                 return;
             }
 
             mBitmapConfig = config == null ? Bitmap.Config.RGB_565 : config;
-
-            long time = System.currentTimeMillis();
-
             mLoadingHandler.post(new Runnable()
             {
                 @Override
@@ -485,8 +475,6 @@ public class SuperImageView extends View
                     try {
                         mDecoder = BitmapRegionDecoder.newInstance(is, false);
                         mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
-
-                        Log.e(TAG, "ImageRect: " + mImageRect);
                     }
                     catch (IOException e) {
                         e.printStackTrace();
@@ -495,12 +483,15 @@ public class SuperImageView extends View
                     }
 
                     if (mDecoder != null) {
-                        postInvalidate();
+                        refreshView();
                     }
                 }
             });
+        }
 
-            Log.e(TAG, "Instance Time: " + (System.currentTimeMillis() - time));
+        private boolean isNeedRefreshView()
+        {
+            return (mNeedRefreshView && (mSrcBitmap != null || mDecoder != null));
         }
 
         /**
@@ -510,7 +501,7 @@ public class SuperImageView extends View
          */
         private synchronized void setView(int vw, int vh)
         {
-            if (!mNeedRefreshView) {
+            if (!isNeedRefreshView()) {
                 return;
             }
 
@@ -531,7 +522,6 @@ public class SuperImageView extends View
             Log.e(TAG, "MaxScaleValue: " + mMaxScaleValue +  " Min: " + mMinScaleValue);
 
             mViewRect.set(0, 0, vw, vh);
-
             /**
              * 计算要缩放的比例
              */
@@ -574,6 +564,14 @@ public class SuperImageView extends View
              * 初始化Grid
              */
             mBitmapGrid.initializeBitmapGrid();
+
+            /**
+             * 设置完成
+             */
+            mNeedRefreshView = false;
+            if (mActionListener != null) {
+                mActionListener.onSetImageFinished();
+            }
         }
 
         /**
@@ -768,9 +766,9 @@ public class SuperImageView extends View
         private void scaleTo(final int cx, final int cy,
                              float dest, boolean smooth, long smoothTime)
         {
-            if (mDecoder == null) {
-                return;
-            }
+//            if (mDecoder == null) {
+//                return;
+//            }
 
             if (mValueAnimator != null && mValueAnimator.isRunning()) {
                 mValueAnimator.end();
@@ -965,10 +963,6 @@ public class SuperImageView extends View
          */
         public void drawVisibleBitmap(Canvas canvas)
         {
-            if (mDecoder == null) {
-                return;
-            }
-
             mBitmapGrid.drawVisibleGrid(canvas);
         }
 
@@ -1011,10 +1005,7 @@ public class SuperImageView extends View
                     mDecoder = null;
                 }
 
-                if (mSrcBitmap != null) {
-                    mSrcBitmap.recycle();
-                    mSrcBitmap = null;
-                }
+                mSrcBitmap = null;
             }
         }
 
@@ -1160,19 +1151,25 @@ public class SuperImageView extends View
          */
         public Bitmap decodeRectBitmap(Rect rect, int sampleSize)
         {
-            synchronized (mBitmapLock) {
-                if (mDecoder == null ||
-                        rect == null || !mImageRect.contains(rect)) {
-                    return null;
-                }
-
-                BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
-                tmpOptions.inPreferredConfig = mBitmapConfig;
-                tmpOptions.inSampleSize = sampleSize;
-                tmpOptions.inJustDecodeBounds = false;
-
-                return mDecoder.decodeRegion(rect, tmpOptions);
+            if (rect == null || !mImageRect.contains(rect)) {
+                return null;
             }
+
+            synchronized (mBitmapLock) {
+                if (mSrcBitmap != null) {
+                    return Bitmap.createBitmap(mSrcBitmap, rect.left, rect.top, rect.width(), rect.height());
+                }
+                else if (mDecoder != null) {
+                    BitmapFactory.Options tmpOptions = new BitmapFactory.Options();
+                    tmpOptions.inPreferredConfig = mBitmapConfig;
+                    tmpOptions.inSampleSize = sampleSize;
+                    tmpOptions.inJustDecodeBounds = false;
+
+                    return mDecoder.decodeRegion(rect, tmpOptions);
+                }
+            }
+
+            return null;
         }
 
         /********************** Gesture Listener ******************************/
@@ -1344,6 +1341,9 @@ public class SuperImageView extends View
                     public void run()
                     {
                         decodeThumbUnitBitmap();
+//                        if (mSrcBitmap != null) {
+//                            mSrcBitmap.recycle();
+//                        }
                         mInitializeFinished = true;
                         postInvalidate();
                     }
@@ -1356,6 +1356,9 @@ public class SuperImageView extends View
             private Bitmap getGridBitmap(final int n, final int m)
             {
                 if (isValidGrid(n, m)) {
+                    if (mSrcBitmap != null) {
+                        return mGrids[n][m].mThumbBitmap;
+                    }
 
                     if (mSampleSize == mThumbSampleSize) {
                         return mGrids[n][m].mThumbBitmap;
@@ -1731,7 +1734,7 @@ public class SuperImageView extends View
         void onLongClicked();
 
         /**
-         * setImage 之后， 回调此函数, 如果图片很大，则会初始化一段时间
+         * setBitmapDecoder 之后， 回调此函数, 如果图片很大，则会初始化一段时间
          */
         void onSettingImage();
 
