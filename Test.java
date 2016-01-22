@@ -346,23 +346,10 @@ public class SuperImageView extends View
         }
 
         @Override
-        public boolean onMoving(MotionEvent event, int dx, int dy)
+        public boolean onMoving(int movingState, int dx, int dy)
         {
+            Log.e(TAG, "MovingState: " + movingState);
             int state = mBitmapManager.offsetShowBitmap(dx, dy);
-            if ((state & LEFT) == LEFT) {
-                Log.e(TAG, "LEFT------");
-            }
-
-            if ((state & RIGHT) == RIGHT) {
-                Log.e(TAG, "RIGHT------");
-            }
-            if ((state & TOP) == TOP) {
-                Log.e(TAG, "TOP------");
-            }
-            if ((state & BOTTOM) == BOTTOM) {
-                Log.e(TAG, "BOTTOM-------");
-            }
-            Log.e(TAG, "----------------");
 
             if ((state & LEFT) == LEFT || (state & RIGHT) == RIGHT) {
                 Log.e(TAG, "dis intercept...");
@@ -1577,6 +1564,10 @@ public class SuperImageView extends View
                                 canvas.drawBitmap(bitmap, null, vRect, null);
                             }
                         }
+
+                        mPaint.setColor(Color.MAGENTA);
+                        mPaint.setStrokeWidth(2);
+                        canvas.drawRect(toViewCoordinate(rect), mPaint);
                     }
                 }
 
@@ -1663,7 +1654,7 @@ public class SuperImageView extends View
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                        (int)(r.right*ratio), (int) (r.bottom*ratio));
+                (int)(r.right*ratio), (int) (r.bottom*ratio));
     }
 
     /**
