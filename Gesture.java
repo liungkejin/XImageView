@@ -8,6 +8,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -101,6 +102,9 @@ public class SimpleGestureDetector
                     mPreClickY = y;
                 }
 
+                if (mAnimatorHandler != null) {
+                    mAnimatorHandler.stopAnimator();
+                }
 //                Log.e(TAG, "X: " + x + " Y: " + y);
                 mPreClickTime = System.currentTimeMillis();
                 break;
@@ -160,11 +164,6 @@ public class SimpleGestureDetector
 
     private void handlePreMoveEvent(MotionEvent event)
     {
-        if (mAnimatorHandler != null &&
-                event.getAction() == MotionEvent.ACTION_DOWN) {
-            mAnimatorHandler.stopAnimator();
-        }
-
         int x = (int) event.getX();
         int y = (int) event.getY();
 
@@ -192,6 +191,9 @@ public class SimpleGestureDetector
     private final static int INERTIA_TIME = 1500;
     private AnimatorUpdateHandler mAnimatorHandler = new AnimatorUpdateHandler();
 
+    private float mLastVx = 0;
+    private float mLastVy = 0;
+
     /**
      * 惯性效果
      */
@@ -210,8 +212,14 @@ public class SimpleGestureDetector
          */
         private long mLastTime = 0;
 
+        private final long TIME = 800;
+
         public void startAnimator(float svx, float svy)
         {
+            if (Math.abs(svx) * TIME < 200 && Math.abs(svy) * TIME < 200) {
+                return;
+            }
+
             if (mListener == null) {
                 return;
             }
@@ -220,12 +228,24 @@ public class SimpleGestureDetector
                 mValueAnimator.cancel();
             }
 
+            mLastTime = 0;
+
             mSVX = svx;
+            if (Math.abs(svx) < 1) {
+                mSVX = svx > 0 ? 1 : -1;
+            }
+
             mSVY = svy;
+            if (Math.abs(svy) < 1) {
+                mSVY = svy > 0 ? 1 : -1;
+            }
+
+            long duration = (long) (Math.max(Math.abs(mSVX), Math.abs(mSVY)) * TIME);
+            Log.e(TAG, "Duration: " + duration);
 
             mValueAnimator = ValueAnimator.ofFloat(1f, 0);
-            mValueAnimator.setInterpolator(new AccelerateDecelerateInterpolator());
-            mValueAnimator.setDuration(INERTIA_TIME);
+            mValueAnimator.setInterpolator(new LinearInterpolator());
+            mValueAnimator.setDuration(duration);
             mValueAnimator.addUpdateListener(this);
             mValueAnimator.addListener(new Animator.AnimatorListener()
             {
@@ -263,6 +283,9 @@ public class SimpleGestureDetector
 
         public void stopAnimator()
         {
+            mSVX = 0;
+            mSVY = 0;
+            mLastTime = 0;
             if (mValueAnimator != null) {
                 mValueAnimator.cancel();
             }
@@ -279,11 +302,14 @@ public class SimpleGestureDetector
             long time = System.currentTimeMillis() - mLastTime;
 
             float value = (float) animation.getAnimatedValue();
-            float vx = mSVX * value;
-            float vy = mSVY * value;
+            int dx = dpToPx(mSVX * value * time);
+            int dy = dpToPx(mSVY * value * time);
 
-            int dx = (int) (vx * time);
-            int dy = (int) (vy * time);
+            Log.e(TAG, "Dx: " + dx + "  DY: " + dy + " Time: " + time);
+            if (dx == 0 && dy == 0) {
+                animation.cancel();
+                return;
+            }
 
             if (mListener != null) {
                 mListener.onMoving(GestureListener.STATE_FLING, dx, dy);
@@ -293,25 +319,27 @@ public class SimpleGestureDetector
         }
     }
 
+
     private void handleMovingEvent(MotionEvent event)
     {
         int x = (int) event.getX();
         int y = (int) event.getY();
 
+        if (event.getAction() == MotionEvent.ACTION_MOVE) {
+            long time = (System.currentTimeMillis() - mPrevTime) + 1;
+            mLastVx = pxToDp(event.getX() - mPreMoveX) * 1.0f / time;
+            mLastVy = pxToDp(event.getY() - mPreMoveY) * 1.0f / time;
+            Log.e(TAG, "VX: " + mLastVx);
+            Log.e(TAG, "VY: " + mLastVy);
+        }
         /**
          * 求出速度
          */
         if (mListener != null) {
             boolean result = mListener.onMoving(GestureListener.STATE_ING, x - mPreMoveX, y - mPreMoveY);
             if (result && event.getAction() == MotionEvent.ACTION_UP) {
-                long time = (System.currentTimeMillis() - mPrevTime) + 1;
-                float vx = (event.getX() - mPreMoveX) * 1.0f / time;
-                float vy = (event.getY() - mPreMoveY) * 1.0f / time;
-                Log.e(TAG, "VX: " + vx);
-                Log.e(TAG, "VY: " + vy);
-
                 // TODO: 进行惯性滑动
-                mAnimatorHandler.startAnimator(vx, vy);
+                mAnimatorHandler.startAnimator(mLastVx, mLastVy);
             }
         }
 
@@ -324,6 +352,8 @@ public class SimpleGestureDetector
     {
         mPreMoveX = -1;
         mPreMoveY = -1;
+        mLastVx = 0;
+        mLastVy = 0;
         mIsMoving = false;
     }
 
@@ -343,6 +373,11 @@ public class SimpleGestureDetector
     private int dpToPx(float dp)
     {
         return (int) (dp * mDisplayDensity + 0.5f);
+    }
+
+    private int pxToDp(float px)
+    {
+        return (int) (px / mDisplayDensity + 0.5f);
     }
 
 
