@@ -38,12 +38,10 @@ import java.util.UUID;
 
 /**
  * 能显示大长图
- * TODO: 到边界返回false
- * TODO: 整合 Bitmap
  * TODO: 自定义初始化状态
- * TODO: 滑动惯性
  * TODO: 优化代码
  * TODO: 显示正在加载， 并增加接口
+ * TODO: 不能连续设置Image
  */
 public class SuperImageView extends View
 {
@@ -1557,13 +1555,13 @@ public class SuperImageView extends View
                 for (int n = sn; n <= en; ++n) {
                     for (int m = sm; m <= em; ++m) {
                         Rect rect = getShowBitmapUnit(n, m);
-                        synchronized (mGrids[n][m]) {
+//                        synchronized (mGrids[n][m]) {
                             Bitmap bitmap = getGridBitmap(n, m);
                             if (bitmap != null) {
                                 Rect vRect = toViewCoordinate(rect);
                                 canvas.drawBitmap(bitmap, null, vRect, null);
                             }
-                        }
+//                        }
 
                         mPaint.setColor(Color.MAGENTA);
                         mPaint.setStrokeWidth(2);
@@ -1654,7 +1652,7 @@ public class SuperImageView extends View
     private Rect rectMulti(Rect r, float ratio)
     {
         return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                (int)(r.right*ratio), (int) (r.bottom*ratio));
+                        (int)(r.right*ratio), (int) (r.bottom*ratio));
     }
 
     /**
