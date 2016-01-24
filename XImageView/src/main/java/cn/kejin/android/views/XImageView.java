@@ -21,6 +21,7 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewParent;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.widget.Scroller;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -37,20 +38,17 @@ import java.util.UUID;
 
 /**
  * 能显示大长图
- * TODO: 到边界返回false
- * TODO: 整合 Bitmap
  * TODO: 自定义初始化状态
- * TODO: 滑动惯性
  * TODO: 优化代码
  * TODO: 显示正在加载， 并增加接口
+ * TODO: 不能连续设置Image
+ * TODO: 解决ViewPager的冲突, 重写自己的ViewPager
  */
-public class SuperImageView extends View
+public class XImageView extends View
 {
     public final static String TAG = "SuperImageView";
 
     private final static String THREAD_NAME = "SuperImageLoad";
-
-    private final static String TEMP_FILE_NAME = "temp.jpg";
 
     private final Object mQueueLock = new Object();
 
@@ -58,6 +56,14 @@ public class SuperImageView extends View
      * 默认双击放大的时间
      */
     private final static int DOUBLE_SCALE_TIME = 400;
+
+    /**
+     * 表示那一边到达了边界
+     */
+    private static final int LEFT   = 0x01;
+    private static final int RIGHT  = 0x02;
+    private static final int TOP    = 0x04;
+    private static final int BOTTOM = 0x08;
 
     /**
      * Gesture Detector
@@ -78,7 +84,6 @@ public class SuperImageView extends View
     /**
      * 判断是否需要进行刷新（重新设置Bitmap和viewRect）
      */
-    private boolean mNeedRefreshView = false;
 
     /**
      * 判断是否正在设置图片
@@ -93,19 +98,19 @@ public class SuperImageView extends View
         mPaint.setStrokeWidth(2);
     }
 
-    public SuperImageView(Context context)
+    public XImageView(Context context)
     {
         super(context);
         initialize();
     }
 
-    public SuperImageView(Context context, AttributeSet attrs)
+    public XImageView(Context context, AttributeSet attrs)
     {
         super(context, attrs);
         initialize();
     }
 
-    public SuperImageView(Context context, AttributeSet attrs, int defStyleAttr)
+    public XImageView(Context context, AttributeSet attrs, int defStyleAttr)
     {
         super(context, attrs, defStyleAttr);
         initialize();
@@ -115,7 +120,7 @@ public class SuperImageView extends View
     {
         Context context = getContext();
 
-        mSimpleDetector = new SimpleGestureDetector(context, mBitmapManager);
+        mSimpleDetector = new SimpleGestureDetector(context, mGestureListener);
 
         mLoadingThread = new HandlerThread(THREAD_NAME);
         mLoadingThread.start();
@@ -147,25 +152,6 @@ public class SuperImageView extends View
         super.onSizeChanged(w, h, oldw, oldh);
     }
 
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent event)
-    {
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-            case MotionEvent.ACTION_MOVE:
-                interceptParentTouchEvent(true);
-                break;
-
-            case MotionEvent.ACTION_CANCEL:
-            case MotionEvent.ACTION_UP:
-                interceptParentTouchEvent(false);
-                break;
-        }
-
-        mSimpleDetector.onTouchEvent(event);
-
-        return true; //super.dispatchTouchEvent(event);
-    }
 
     @Override
     public boolean onTouchEvent(MotionEvent event)
@@ -179,11 +165,6 @@ public class SuperImageView extends View
     @Override
     protected void onDraw(Canvas canvas)
     {
-        if (mIsSettingImage) {
-            //TODO 画正在加载的图片
-            return;
-        }
-        mBitmapManager.setView(getWidth(), getHeight());
         mBitmapManager.drawVisibleBitmap(canvas);
     }
 
@@ -298,6 +279,22 @@ public class SuperImageView extends View
     }
 
 
+    private void onSetImageStart()
+    {
+        mIsSettingImage = true;
+        postInvalidate();
+    }
+
+    private void onSetImageFinished()
+    {
+        mIsSettingImage = false;
+        if (mActionListener != null) {
+            mActionListener.onSetImageFinished();
+        }
+        postInvalidate();
+    }
+
+
     /**
      * 缩放到指定的大小, 起始是以当前的大小为准
      * 并且以屏幕中心进行缩放
@@ -307,7 +304,86 @@ public class SuperImageView extends View
         mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
     }
 
-    private class BitmapManager implements SimpleGestureDetector.GestureListener
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event)
+    {
+        mSimpleDetector.onTouchEvent(event);
+
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                Log.e(TAG, "intercept....");
+                interceptParentTouchEvent(true);
+                break;
+
+            case MotionEvent.ACTION_MOVE:
+                break;
+
+            case MotionEvent.ACTION_UP:
+                Log.e(TAG, "cancel intercept...");
+                interceptParentTouchEvent(false);
+                break;
+        }
+
+        return super.dispatchTouchEvent(event);
+    }
+
+    /********************* Gesture Listener *******************************/
+    private SimpleGestureDetector.GestureListener
+            mGestureListener = new SimpleGestureDetector.GestureListener()
+    {
+        @Override
+        public void onTapped(int x, int y)
+        {
+            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y);
+        }
+
+        @Override
+        public void onDoubleClicked(int x, int y)
+        {
+            Log.e(TAG, "On Double Clicked X: " + x + " Y: " + y);
+            mBitmapManager.scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
+        }
+
+        @Override
+        public boolean onMoving(int movingState, int dx, int dy)
+        {
+            Log.e(TAG, "MovingState: " + movingState);
+            int state = mBitmapManager.offsetShowBitmap(dx, dy);
+
+            if ((state & LEFT) == LEFT || (state & RIGHT) == RIGHT) {
+                Log.e(TAG, "dis intercept...");
+                interceptParentTouchEvent(false);
+            }
+
+            return true;
+        }
+
+        @Override
+        public boolean onScale(ScaleGestureDetector detector, int state)
+        {
+            float factor = detector.getScaleFactor();
+            switch (state) {
+                case STATE_BEG:
+                    break;
+
+                case STATE_ING:
+                    mBitmapManager.scaleShowBitmap(
+                            (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
+                    break;
+
+                case STATE_END:
+                    /**
+                     * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
+                     */
+                    mBitmapManager.updateSampleSize();
+                    break;
+            }
+
+            return true;
+        }
+    };
+
+    private class BitmapManager
     {
         /**
          * Decoder
@@ -384,44 +460,29 @@ public class SuperImageView extends View
 
         private final Object mBitmapLock = new Object();
 
-        /**
-         * 重新刷新一次
-         */
-        private synchronized void refreshView()
-        {
-            if (mNeedRefreshView) {
-                return;
-            }
-
-            mNeedRefreshView = true;
-            postInvalidate();
-        }
 
         /**
          * 这几个函数的顺序为
-         * onSetImageStart() -> onSetImageFinished() -> setView() -> onSetViewFinished()
+         * onSetImageStart() -> onSetImageFinished() -> updateViewRect() -> onSetViewFinished()
          */
-
 
         /**
          * 直接设置 Bitmap
          */
         private synchronized void setSrcBitmap(final Bitmap bitmap, boolean cache)
         {
+            onSetImageStart();
             recycleAll();
 
             if (bitmap == null) {
-                refreshView();
-                if (mActionListener != null) {
-                    mActionListener.onSetImageFinished();
-                }
+                onSetImageFinished();
                 return;
             }
 
             if (!cache) {
                 mSrcBitmap = bitmap;
                 mImageRect.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
-                refreshView();
+                postInvalidate();
             }
             else {
                 final File tempFile = new File(getContext().getCacheDir(), UUID.randomUUID().toString());
@@ -456,10 +517,7 @@ public class SuperImageView extends View
             recycleAll();
 
             if (is == null) {
-                refreshView();
-                if (mActionListener != null) {
-                    mActionListener.onSetImageFinished();
-                }
+                onSetImageFinished();
                 return;
             }
 
@@ -480,15 +538,10 @@ public class SuperImageView extends View
                     }
 
                     if (mDecoder != null) {
-                        refreshView();
+                        postInvalidate();
                     }
                 }
             });
-        }
-
-        private boolean isNeedRefreshView()
-        {
-            return (mNeedRefreshView && (mSrcBitmap != null || mDecoder != null));
         }
 
         /**
@@ -496,11 +549,8 @@ public class SuperImageView extends View
          * @param vw view width
          * @param vh view height
          */
-        private synchronized void setView(int vw, int vh)
+        private synchronized void updateViewRect(int vw, int vh)
         {
-            if (!isNeedRefreshView()) {
-                return;
-            }
 
             int iw = mImageRect.width();
             int ih = mImageRect.height();
@@ -561,14 +611,6 @@ public class SuperImageView extends View
              * 初始化Grid
              */
             mBitmapGrid.initializeBitmapGrid();
-
-            /**
-             * 设置完成
-             */
-            mNeedRefreshView = false;
-            if (mActionListener != null) {
-                mActionListener.onSetImageFinished();
-            }
         }
 
         /**
@@ -578,16 +620,10 @@ public class SuperImageView extends View
          * Top = 0x04;
          * Bottom = 0x08;
          */
-        private static final int LEFT   = 0x01;
-        private static final int RIGHT  = 0x02;
-        private static final int TOP    = 0x04;
-        private static final int BOTTOM = 0x08;
         private int offsetShowBitmap(int dx, int dy)
         {
             Rect oRect = toViewCoordinate(mShowBitmapRect);
 
-            Rect detectRect = new Rect(oRect);
-            detectRect.offset(dx, dy);
             /**
              * 检测边界
              */
@@ -635,18 +671,19 @@ public class SuperImageView extends View
             mViewBitmapRect.offset(-(rx == Integer.MAX_VALUE ? 0 : rx), -(ry == Integer.MAX_VALUE ? 0 : ry));
             invalidate();
 
+            Rect detectRect = new Rect(mViewBitmapRect);
             int result = 0;
-            if (detectRect.left > 2) {
+            if (detectRect.left <= 0) {
                 result |= LEFT;
             }
-            if (detectRect.right < mViewRect.right-2) {
+            if (detectRect.right >= mShowBitmapRect.right) {
                 result |= RIGHT;
             }
 
-            if (detectRect.top > 2) {
+            if (detectRect.top <= 0) {
                 result |= TOP;
             }
-            if (detectRect.bottom < mViewRect.bottom-2) {
+            if (detectRect.bottom >= mShowBitmapRect.bottom) {
                 result |= BOTTOM;
             }
 
@@ -955,12 +992,38 @@ public class SuperImageView extends View
         }
 
         /**
+         * 判断是否需要更新ViewRect
+         * @return boolean
+         */
+        private boolean isNeedUpdateViewRect()
+        {
+            return ((mSrcBitmap != null || mDecoder != null) &&
+                    (mIsSettingImage || (mViewRect.width() != getWidth() || mViewRect.height() != getHeight())));
+        }
+
+        /**
          * 画可见区域的的Bitmap
          * @param canvas 画布
+         * @return boolean (true 表示画图片成功, false 表示正在处理图片， 没有真正画出)
          */
-        public void drawVisibleBitmap(Canvas canvas)
+        public boolean drawVisibleBitmap(Canvas canvas)
         {
-            mBitmapGrid.drawVisibleGrid(canvas);
+            if (mSrcBitmap != null &&
+                    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+                int mw = canvas.getMaximumBitmapWidth();
+                int mh = canvas.getMaximumBitmapHeight();
+
+                if (mSrcBitmap.getHeight() > mh || mSrcBitmap.getWidth() > mw) {
+                    Log.e(TAG, "Bitmap is too large > canvas MaximumBitmapSize, You should cache it!");
+                }
+            }
+
+            if (isNeedUpdateViewRect()) {
+                updateViewRect(getWidth(), getHeight());
+                return false;
+            }
+
+            return mBitmapGrid.drawVisibleGrid(canvas);
         }
 
 
@@ -1169,60 +1232,6 @@ public class SuperImageView extends View
             return null;
         }
 
-        /********************** Gesture Listener ******************************/
-
-        @Override
-        public void onTapped(int x, int y)
-        {
-            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y);
-        }
-
-        @Override
-        public void onDoubleClicked(int x, int y)
-        {
-            Log.e(TAG, "On Double Clicked X: " + x + " Y: " + y);
-            scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
-        }
-
-        @Override
-        public void onMoving(int preX, int preY, int x, int y, int dx, int dy)
-        {
-            int result = offsetShowBitmap(dx, dy);
-
-            if ((result & LEFT) == LEFT || (result & RIGHT) == RIGHT) {
-                interceptParentTouchEvent(false);
-            }
-            else {
-                interceptParentTouchEvent(true);
-            }
-        }
-
-        @Override
-        public boolean onScale(ScaleGestureDetector detector, int state)
-        {
-            float factor = detector.getScaleFactor();
-            switch (state) {
-                case STATE_BEG:
-//                    mFocusX = (int) detector.getFocusX();
-//                    mFocusY = (int) detector.getFocusY();
-                    break;
-
-                case STATE_ING:
-                    mBitmapManager.scaleShowBitmap(
-                            (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
-                    break;
-
-                case STATE_END:
-                    /**
-                     * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
-                     */
-                    mBitmapManager.updateSampleSize();
-                    break;
-            }
-
-            return true;
-        }
-
         /*****************************************************************/
 
         private class BitmapUnit
@@ -1298,16 +1307,8 @@ public class SuperImageView extends View
              */
             private BitmapUnit [][] mGrids = null;
 
-            /**
-             * 是否初始化完成了
-             */
-            private boolean mInitializeFinished = false;
-
-
             private synchronized void initializeBitmapGrid()
             {
-                mInitializeFinished = false;
-
                 if (mGrids != null) {
                     recycleAllGrids();
                 }
@@ -1338,11 +1339,10 @@ public class SuperImageView extends View
                     public void run()
                     {
                         decodeThumbUnitBitmap();
-//                        if (mSrcBitmap != null) {
-//                            mSrcBitmap.recycle();
-//                        }
-                        mInitializeFinished = true;
-                        postInvalidate();
+                        /**
+                         * 设置完成
+                         */
+                        onSetImageFinished();
                     }
                 });
             }
@@ -1538,11 +1538,11 @@ public class SuperImageView extends View
             /**
              * 画出可见的几个格子
              */
-            private void drawVisibleGrid(Canvas canvas)
+            private boolean drawVisibleGrid(Canvas canvas)
             {
-                if (mGrids == null || !mInitializeFinished ||
-                        mImageRect.width() <= 0 || mImageRect.height() <= 0) {
-                    return;
+                if ((mSrcBitmap == null && mDecoder == null) ||
+                        mGrids == null || mImageRect.width() <= 0 || mImageRect.height() <= 0) {
+                    return false;
                 }
 
                 Rect visible = getVisibleGrid();
@@ -1556,19 +1556,21 @@ public class SuperImageView extends View
                 for (int n = sn; n <= en; ++n) {
                     for (int m = sm; m <= em; ++m) {
                         Rect rect = getShowBitmapUnit(n, m);
-                        synchronized (mGrids[n][m]) {
+//                        synchronized (mGrids[n][m]) {
                             Bitmap bitmap = getGridBitmap(n, m);
                             if (bitmap != null) {
                                 Rect vRect = toViewCoordinate(rect);
                                 canvas.drawBitmap(bitmap, null, vRect, null);
-
-//                                mPaint.setColor(Color.MAGENTA);
-//                                mPaint.setStrokeWidth(2);
-//                                canvas.drawRect(vRect, mPaint);
                             }
-                        }
+//                        }
+
+                        mPaint.setColor(Color.MAGENTA);
+                        mPaint.setStrokeWidth(2);
+                        canvas.drawRect(toViewCoordinate(rect), mPaint);
                     }
                 }
+
+                return true;
             }
 
             /**
