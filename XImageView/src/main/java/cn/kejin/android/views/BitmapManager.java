@@ -153,7 +153,7 @@ public class BitmapManager
     /**
      * 开启HandlerThread
      */
-    private synchronized void initialize(View view, @NonNull IManagerCallback callback)
+    private void initialize(View view, @NonNull IManagerCallback callback)
     {
         mImageView = view;
         mIsSettingImage = true;
@@ -172,17 +172,27 @@ public class BitmapManager
     /**
      * 当这个BitmapManager 被丢弃时，必须要执行这个onDestroy(), 确保线程已经退出
      */
-    public synchronized void onDestroy()
+    public void onDestroy()
     {
         mLoadingThread.quit();
         mCacheFile.delete(); // 删除临时文件
         recycleAll();
     }
 
+    public void invalidate()
+    {
+        mImageView.invalidate();
+    }
+
+    public void postInvalidate()
+    {
+        mImageView.postInvalidate();
+    }
+
     /**
      * 开始设置图片的缩略图，View的rect 等数据
      */
-    private synchronized void startInitImageThumb()
+    private void startInitImageThumb()
     {
         mImageView.post(new Runnable()
         {
@@ -194,18 +204,25 @@ public class BitmapManager
         });
     }
 
+    /**
+     * 设置图片结束
+     */
     private synchronized void onSetImageFinished(boolean success)
     {
-
+        if (success) {
+            mIsSettingImage = false;
+        }
+        postInvalidate();
+        mManagerCallback.onSetImageFinished(success);
     }
 
     /**
      * 直接设置 Bitmap, 这个函数只会走一次
      */
-    private synchronized void setSrcBitmap(final Bitmap bitmap, boolean cache)
+    private void setSrcBitmap(final Bitmap bitmap, boolean cache)
     {
         if (bitmap == null) {
-            mManagerCallback.onSetImageFinished(true);
+            onSetImageFinished(true);
             return;
         }
 
@@ -226,7 +243,7 @@ public class BitmapManager
                     }
                     catch (Exception e) {
                         e.printStackTrace();
-                        mManagerCallback.onSetImageFinished(false);
+                        onSetImageFinished(false);
                     }
                 }
             });
@@ -245,7 +262,7 @@ public class BitmapManager
     private void setBitmapDecoder(final InputStream is, Bitmap.Config config)
     {
         if (is == null) {
-            mManagerCallback.onSetImageFinished(true);
+            onSetImageFinished(true);
             return;
         }
 
@@ -262,7 +279,7 @@ public class BitmapManager
                 catch (IOException e) {
                     e.printStackTrace();
                     mDecoder = null;
-                    mManagerCallback.onSetImageFinished(false);
+                    onSetImageFinished(false);
                 }
 
                 if (mDecoder != null) {
@@ -277,7 +294,7 @@ public class BitmapManager
      * @param vw view width
      * @param vh view height
      */
-    private synchronized void updateViewRect(int vw, int vh)
+    private void updateViewRect(int vw, int vh)
     {
         int iw = mImageRect.width();
         int ih = mImageRect.height();
@@ -347,6 +364,10 @@ public class BitmapManager
      * Top = 0x04;
      * Bottom = 0x08;
      */
+    public static final int LEFT   = 0x01;
+    public static final int RIGHT  = 0x02;
+    public static final int TOP    = 0x04;
+    public static final int BOTTOM = 0x08;
     public int offsetShowBitmap(int dx, int dy)
     {
         Rect oRect = toViewCoordinate(mShowBitmapRect);
@@ -423,7 +444,7 @@ public class BitmapManager
      * @param cy 中心点的 y
      * @param sc 缩放系数
      */
-    private void scaleShowBitmap(int cx, int cy, float sc)
+    public void scaleShowBitmap(int cx, int cy, float sc)
     {
         /**
          * 如果图片的长或宽，全在视图内，则以中线进行缩放
@@ -514,7 +535,7 @@ public class BitmapManager
     /**
      * 以中心点缩放
      */
-    private void scaleFromCenterTo(float dest, boolean smooth, long smoothTime)
+    public void scaleFromCenterTo(float dest, boolean smooth, long smoothTime)
     {
         scaleTo(mViewRect.centerX(), mViewRect.centerY(), dest, smooth, smoothTime);
     }
@@ -527,10 +548,6 @@ public class BitmapManager
     private void scaleTo(final int cx, final int cy,
                          float dest, boolean smooth, long smoothTime)
     {
-//            if (mDecoder == null) {
-//                return;
-//            }
-
         if (mValueAnimator != null && mValueAnimator.isRunning()) {
             mValueAnimator.end();
             mValueAnimator.cancel();
@@ -596,7 +613,7 @@ public class BitmapManager
      * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
      * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
      */
-    private void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
+    public void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
     {
         float destScale;
 
@@ -719,13 +736,17 @@ public class BitmapManager
     }
 
     /**
-     * 判断是否需要更新ViewRect
-     * @return boolean
+     * 检查或者更新视图的尺寸
      */
-    private boolean isNeedUpdateViewRect()
+    private boolean checkOrUpdateViewRect(int width, int height)
     {
-        return ((mSrcBitmap != null || mDecoder != null) &&
-                (mIsSettingImage || (mViewRect.width() != getWidth() || mViewRect.height() != getHeight())));
+        if (mViewRect.width() != width || mViewRect.height() != height) {
+            mIsSettingImage = true;
+            updateViewRect(width, height);
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -733,24 +754,30 @@ public class BitmapManager
      * @param canvas 画布
      * @return boolean (true 表示画图片成功, false 表示正在处理图片， 没有真正画出)
      */
-    public boolean drawVisibleBitmap(Canvas canvas)
+    public boolean drawVisibleBitmap(@NonNull Canvas canvas, int width, int height)
     {
+        if (mIsSettingImage || (mSrcBitmap == null && mDecoder == null)) {
+            return false;
+        }
+
         if (mSrcBitmap != null &&
-                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
+                android.os.Build.VERSION.SDK_INT >=
+                        android.os.Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
             int mw = canvas.getMaximumBitmapWidth();
             int mh = canvas.getMaximumBitmapHeight();
 
+            /**
+             * 如果图片太大，直接使用bitmap 会占用很大内存，所以建议缓存为文件再显示
+             */
             if (mSrcBitmap.getHeight() > mh || mSrcBitmap.getWidth() > mw) {
                 Log.e(TAG, "Bitmap is too large > canvas MaximumBitmapSize, You should cache it!");
             }
         }
 
-        if (isNeedUpdateViewRect()) {
-            updateViewRect(getWidth(), getHeight());
-            return false;
-        }
-
-        return mBitmapGrid.drawVisibleGrid(canvas);
+        /**
+         * 更新视图或者画出图片
+         */
+        return !checkOrUpdateViewRect(width, height) && mBitmapGrid.drawVisibleGrid(canvas);
     }
 
 
@@ -832,7 +859,7 @@ public class BitmapManager
     /**
      * 当缩放结束后，需要重新解码最新的bitmap
      */
-    private void updateSampleSize()
+    public void updateSampleSize()
     {
         int sampleSize = getCurSampleSize();
         if (sampleSize == mSampleSize) {
@@ -962,6 +989,13 @@ public class BitmapManager
 
     /*****************************************************************/
 
+    /**
+     * 一个 Bitmap 单元， 每一个bitmap 单元都会有个缩略图的bitmap
+     * 这个缩略图是在一开始就已经生成的，并一直存在，只有在最后才会被释放
+     * 另外一个 bitmap 就当前需要显示的正常的bitmap，当只需要显示缩略图或者屏幕中不可见时，这个bitmap会被释放掉
+     *
+     * 如果整个图片就是一个 Bitmap 时，缩略图的bitmap就是正常的 bitmap,
+     */
     private class BitmapUnit
     {
         /**
@@ -985,6 +1019,9 @@ public class BitmapManager
          */
         public Bitmap mThumbBitmap = null;
 
+        /**
+         * 这里回收所有的bitmap
+         */
         private void recycleAll()
         {
             if (mBitmap != null) {
@@ -1001,15 +1038,17 @@ public class BitmapManager
             mCurSampleSize = 0;
         }
 
+        /**
+         * 这里只回收正常的bitmap, 不回收缩略图的bitmap
+         */
         private void recycle()
         {
-            synchronized (this) {
-                if (mBitmap != null) {
-                    mBitmap.recycle();
-                }
-                mBitmap = null;
-                mCurSampleSize = mThumbSampleSize;
+            if (mBitmap != null) {
+                mBitmap.recycle();
             }
+
+            mBitmap = null;
+            mCurSampleSize = mThumbSampleSize;
         }
     }
 
@@ -1035,7 +1074,7 @@ public class BitmapManager
          */
         private BitmapUnit [][] mGrids = null;
 
-        private synchronized void initializeBitmapGrid()
+        private void initializeBitmapGrid()
         {
             if (mGrids != null) {
                 recycleAllGrids();
@@ -1070,7 +1109,7 @@ public class BitmapManager
                     /**
                      * 设置完成
                      */
-                    mManagerCallback.onSetImageFinished(true);
+                    onSetImageFinished(true);
                 }
             });
         }
@@ -1081,21 +1120,21 @@ public class BitmapManager
         private Bitmap getGridBitmap(final int n, final int m)
         {
             if (isValidGrid(n, m)) {
+                BitmapUnit unit = mGrids[n][m];
                 if (mSrcBitmap != null) {
-                    return mGrids[n][m].mThumbBitmap;
+                    return unit.mThumbBitmap;
                 }
 
                 if (mSampleSize == mThumbSampleSize) {
-                    return mGrids[n][m].mThumbBitmap;
+                    return unit.mThumbBitmap;
                 }
 
-                if (mGrids[n][m].mCurSampleSize != mSampleSize) {
+                if (unit.mCurSampleSize != mSampleSize) {
                     loadUnitBitmap(n, m);
                 }
 
-                return mGrids[n][m].mBitmap != null &&
-                        !mGrids[n][m].mBitmap.isRecycled() ?
-                        mGrids[n][m].mBitmap : mGrids[n][m].mThumbBitmap;
+                return (unit.mBitmap != null &&
+                        !unit.mBitmap.isRecycled()) ? unit.mBitmap : unit.mThumbBitmap;
             }
 
             return null;
@@ -1107,40 +1146,24 @@ public class BitmapManager
         private void loadUnitBitmap(final int n, final int m)
         {
             if (mSampleSize != mThumbSampleSize && isValidGrid(n, m)) {
-                synchronized (mQueueLock) {
-                    /**
-                     * 判断这个单元格是否已经正在加载
-                     */
-                    if (mGrids[n][m].mIsLoading) {
-                        return;
-                    }
-                    mGrids[n][m].mIsLoading = true;
+                BitmapUnit unit = mGrids[n][m];
+                if (unit.mIsLoading) {
+                    return;
+                }
+                unit.mIsLoading = true;
 
-                    mLoadingHandler.post(new Runnable()
+                mLoadingHandler.post(new Runnable()
+                {
+                    @Override
+                    public void run()
                     {
-                        @Override
-                        public void run()
-                        {
-                            synchronized (mQueueLock) {
-                                if (isValidGrid(n, m)) {
-                                    mGrids[n][m].mIsLoading = false;
-                                }
-                            }
-
+                        if (isValidGrid(n, m)) {
                             decodeVisibleUnitBitmap(n, m);
+                            mGrids[n][m].mIsLoading = false;
                             postInvalidate();
                         }
-                    });
-                }
-            }
-        }
-
-        private void recycleBitmap()
-        {
-            for(int i = 0; i < mN; ++i) {
-                for (int j = 0; j < mM; ++j) {
-                    mGrids[i][j].recycle();
-                }
+                    }
+                });
             }
         }
 
@@ -1284,13 +1307,13 @@ public class BitmapManager
             for (int n = sn; n <= en; ++n) {
                 for (int m = sm; m <= em; ++m) {
                     Rect rect = getShowBitmapUnit(n, m);
-                        synchronized (mGrids[n][m]) {
-                    Bitmap bitmap = getGridBitmap(n, m);
-                    if (bitmap != null) {
-                        Rect vRect = toViewCoordinate(rect);
-                        canvas.drawBitmap(bitmap, null, vRect, null);
-                    }
-                        }
+//                        synchronized (mGrids[n][m]) {
+                            Bitmap bitmap = getGridBitmap(n, m);
+                            if (bitmap != null) {
+                                Rect vRect = toViewCoordinate(rect);
+                                canvas.drawBitmap(bitmap, null, vRect, null);
+                            }
+//                        }
 
 //                    mPaint.setColor(Color.MAGENTA);
 //                    mPaint.setStrokeWidth(2);
@@ -1308,16 +1331,18 @@ public class BitmapManager
         private synchronized void decodeVisibleUnitBitmap(int n, int m)
         {
             if (isValidGrid(n, m) && isVisibleUnit(n, m)) {
-                mGrids[n][m].recycle();
+                BitmapUnit unit = mGrids[n][m];
 
                 // 防止二次decode
-                if (mGrids[n][m].mCurSampleSize == mSampleSize) {
+                if (unit.mCurSampleSize == mSampleSize) {
                     return;
                 }
 
+                unit.recycle();
+
                 Rect rect = getUnitRect(n, m);
-                mGrids[n][m].mCurSampleSize = mSampleSize;
-                mGrids[n][m].mBitmap = decodeRectBitmap(rect, mGrids[n][m].mCurSampleSize);
+                unit.mCurSampleSize = mSampleSize;
+                unit.mBitmap = decodeRectBitmap(rect, unit.mCurSampleSize);
             }
         }
 

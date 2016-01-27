@@ -1,8 +1,10 @@
 package cn.xoracle.library;
 
+import android.os.Environment;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 
+import java.io.File;
 import java.io.IOException;
 
 import cn.kejin.android.views.XImageView;
@@ -19,7 +21,7 @@ public class MainActivity extends AppCompatActivity
         setContentView(R.layout.activity_main);
 
         mXImageView = (XImageView) findViewById(R.id.superImageView);
-//        mSuperImageView.setImage(new File(Environment.getExternalStorageDirectory(), "World.jpg"));
+        mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "World.jpg"));
         try {
             mXImageView.setImage(getAssets().open("b.jpg"));
         }
