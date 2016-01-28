@@ -1,8 +1,9 @@
 package cn.xoracle.library;
 
-import android.os.Environment;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.support.v7.app.AppCompatActivity;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,12 +23,20 @@ public class MainActivity extends AppCompatActivity
 
         mXImageView = (XImageView) findViewById(R.id.superImageView);
         mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "World.jpg"));
-        try {
-            mXImageView.setImage(getAssets().open("b.jpg"));
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
+
+        new Handler().postDelayed(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                try {
+                    mXImageView.setImage(getAssets().open("b.jpg"));
+                }
+                catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }, 15000);
 //        ViewPager viewPager = (ViewPager) findViewById(R.id.viewPager);
 //        viewPager.setAdapter(new PagerAdapter()
 //        {

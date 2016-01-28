@@ -72,16 +72,19 @@ public class BitmapManager
 
     /**
      * 原图的宽高
+     * View 坐标系
      */
     private Rect mImageRect = new Rect();
 
     /**
      * 视图的宽高
+     * View 坐标系
      */
     private Rect mViewRect = new Rect();
 
     /**
      * 视图相对bitmap（mShowBitmapRect）坐标系的 rect
+     * Bitmap 坐标系
      */
     private Rect mViewBitmapRect = new Rect();
 
@@ -89,16 +92,19 @@ public class BitmapManager
      * 需要显示的bitmap的宽高, 就是真实需要显示的宽高，
      * 从 mDecoder中出来的 bitmap 需要 缩放为 此宽高
      * 在计算的时候，需要缩放比例来
+     * Bitmap 坐标系
      */
     private Rect mShowBitmapRect = new Rect();
 
     /**
      * 用于缩放的 rect
+     * Bitmap 坐标系
      */
     private RectF mShowBitmapRectF = new RectF();
 
     /**
      * 缩略图是的 rect
+     * Bitmap 坐标系
      */
     private Rect mThumbShowBitmapRect = new Rect();
 
@@ -541,6 +547,62 @@ public class BitmapManager
     }
 
     /**
+     * 缩放到适应屏幕
+     * 如果此时整个图片都在 视图可见区域中, 则放大到占满整个屏幕
+     * 如果整个图片不再可见区域中， 则缩小到整个视图可见大小
+     *
+     * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
+     * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
+     */
+    public void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
+    {
+        float destScale;
+
+        float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
+        float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
+
+        int sw = mShowBitmapRect.width();
+        int sh = mShowBitmapRect.height();
+
+        int tw = mThumbShowBitmapRect.width();
+        int th = mThumbShowBitmapRect.height();
+
+        /**
+         * 如果和小图差不多大小
+         */
+        if ((Math.abs(sw - tw) < 5 && Math.abs(sh - th) < 5)) {
+            if (mViewBitmapRect.contains(mImageRect)) {
+                /**
+                 * 如果真实图片就小于视图， 则放大到最小适应屏幕
+                 */
+                destScale = Math.min(ws, hs);
+            }
+            else {
+                /**
+                 * 放大到最大适应屏幕
+                 */
+                destScale = Math.max(ws, hs);
+            }
+        }
+        else {
+            /**
+             * 缩小到最小图片
+             */
+            if (mViewBitmapRect.contains(mImageRect)) {
+                ws = mImageRect.width() * 1f / mShowBitmapRect.width();
+                hs = mImageRect.height() * 1f/ mShowBitmapRect.height();
+                destScale = Math.min(ws, hs);
+            }
+            else {
+                destScale = Math.min(ws, hs);
+            }
+        }
+        Log.e(TAG, "Dest Scale: " + destScale);
+
+        scaleTo(cx, cy, destScale, smooth, smoothTime);
+    }
+
+    /**
      * 缩放到指定的大小
      * TODO: 兼容 API 10, 使用Handler
      */
@@ -603,62 +665,6 @@ public class BitmapManager
             scaleShowBitmap(cx, cy, dest);
             updateSampleSize();
         }
-    }
-
-    /**
-     * 缩放到适应屏幕
-     * 如果此时整个图片都在 视图可见区域中, 则放大到占满整个屏幕
-     * 如果整个图片不再可见区域中， 则缩小到整个视图可见大小
-     *
-     * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
-     * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
-     */
-    public void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
-    {
-        float destScale;
-
-        float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
-        float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
-
-        int sw = mShowBitmapRect.width();
-        int sh = mShowBitmapRect.height();
-
-        int tw = mThumbShowBitmapRect.width();
-        int th = mThumbShowBitmapRect.height();
-
-        /**
-         * 如果和小图差不多大小
-         */
-        if ((Math.abs(sw - tw) < 5 && Math.abs(sh - th) < 5)) {
-            if (mViewBitmapRect.contains(mImageRect)) {
-                /**
-                 * 如果真实图片就小于视图， 则放大到最小适应屏幕
-                 */
-                destScale = Math.min(ws, hs);
-            }
-            else {
-                /**
-                 * 放大到最大适应屏幕
-                 */
-                destScale = Math.max(ws, hs);
-            }
-        }
-        else {
-            /**
-             * 缩小到最小图片
-             */
-            if (mViewBitmapRect.contains(mImageRect)) {
-                ws = mImageRect.width() * 1f / mShowBitmapRect.width();
-                hs = mImageRect.height() * 1f/ mShowBitmapRect.height();
-                destScale = Math.min(ws, hs);
-            }
-            else {
-                destScale = Math.min(ws, hs);
-            }
-        }
-        Log.e(TAG, "Dest Scale: " + destScale);
-
-        scaleTo(cx, cy, destScale, smooth, smoothTime);
     }
 
     /**
@@ -809,7 +815,7 @@ public class BitmapManager
     /**
      * 释放所有内存，停止线程
      */
-    public void recycleAll()
+    private void recycleAll()
     {
         mBitmapGrid.recycleAllGrids();
 
@@ -869,6 +875,14 @@ public class BitmapManager
         invalidate();
 
         Log.e(TAG, "Current Sample Size: " + mSampleSize);
+    }
+
+    /**
+     * 检测是否这个点在图片上
+     */
+    public boolean isTapOnImage(int x, int y)
+    {
+        return toViewCoordinate(mShowBitmapRect).contains(x, y);
     }
 
     /**
@@ -964,7 +978,7 @@ public class BitmapManager
     /**
      * 从解码出一块bitmap
      */
-    public Bitmap decodeRectBitmap(Rect rect, int sampleSize)
+    private Bitmap decodeRectBitmap(Rect rect, int sampleSize)
     {
         if (rect == null || !mImageRect.contains(rect)) {
             return null;
@@ -1024,14 +1038,6 @@ public class BitmapManager
          */
         private void recycleAll()
         {
-            if (mBitmap != null) {
-                mBitmap.recycle();
-            }
-
-            if (mThumbBitmap != null) {
-                mThumbBitmap.recycle();
-            }
-
             mBitmap = null;
             mThumbBitmap = null;
 
@@ -1043,10 +1049,6 @@ public class BitmapManager
          */
         private void recycle()
         {
-            if (mBitmap != null) {
-                mBitmap.recycle();
-            }
-
             mBitmap = null;
             mCurSampleSize = mThumbSampleSize;
         }
@@ -1100,18 +1102,20 @@ public class BitmapManager
             /**
              * 异步加载缩略图
              */
-            mLoadingHandler.post(new Runnable()
-            {
-                @Override
-                public void run()
+            if (mLoadingThread.isAlive()) {
+                mLoadingHandler.post(new Runnable()
                 {
-                    decodeThumbUnitBitmap();
-                    /**
-                     * 设置完成
-                     */
-                    onSetImageFinished(true);
-                }
-            });
+                    @Override
+                    public void run()
+                    {
+                        decodeThumbUnitBitmap();
+                        /**
+                         * 设置完成
+                         */
+                        onSetImageFinished(true);
+                    }
+                });
+            }
         }
 
         /**
@@ -1177,8 +1181,6 @@ public class BitmapManager
                     mGrids[i][j].recycleAll();
                 }
             }
-
-            mGrids = null;
         }
 
         /**

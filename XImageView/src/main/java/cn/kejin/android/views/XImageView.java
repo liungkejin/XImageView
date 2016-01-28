@@ -1,35 +1,28 @@
 package cn.kejin.android.views;
 
 import android.animation.Animator;
-import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.BitmapRegionDecoder;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Rect;
-import android.graphics.RectF;
-import android.os.Handler;
-import android.os.HandlerThread;
+import android.hardware.SensorManager;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewParent;
 import android.view.animation.AccelerateDecelerateInterpolator;
-import android.widget.Scroller;
+import android.view.animation.LinearInterpolator;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.util.UUID;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -41,16 +34,11 @@ import java.util.UUID;
  * TODO: 自定义初始化状态
  * TODO: 优化代码
  * TODO: 显示正在加载， 并增加接口
- * TODO: 不能连续设置Image
  * TODO: 解决ViewPager的冲突, 重写自己的ViewPager
  */
 public class XImageView extends View
 {
     public final static String TAG = "SuperImageView";
-
-    private final static String THREAD_NAME = "SuperImageLoad";
-
-    private final Object mQueueLock = new Object();
 
     /**
      * 默认双击放大的时间
@@ -58,37 +46,23 @@ public class XImageView extends View
     private final static int DOUBLE_SCALE_TIME = 400;
 
     /**
-     * 表示那一边到达了边界
-     */
-    private static final int LEFT   = 0x01;
-    private static final int RIGHT  = 0x02;
-    private static final int TOP    = 0x04;
-    private static final int BOTTOM = 0x08;
-
-    /**
      * Gesture Detector
      */
-    private SimpleGestureDetector mSimpleDetector = null;
+    private XGestureDetector mGestureDetector = null;
+
+    /**
+     * Action Listener
+     */
+    private OnActionListener mActionListener = null;
 
     /**
      * bitmap 的管理器
      */
     private BitmapManager mBitmapManager = null;
 
-    /**
-     * 异步处理图片的解码
-     */
-    private Handler mLoadingHandler = null;
-    private HandlerThread mLoadingThread = null;
 
-    /**
-     * 判断是否需要进行刷新（重新设置Bitmap和viewRect）
-     */
 
-    /**
-     * 判断是否正在设置图片
-     */
-    private boolean mIsSettingImage = false;
+    private float mDisplayDensity = 1;
 
     private final static Paint mPaint = new Paint();
     static {
@@ -119,17 +93,17 @@ public class XImageView extends View
     private void initialize()
     {
         Context context = getContext();
+        mDisplayDensity = context.getResources().getDisplayMetrics().density;
+        float dpi = mDisplayDensity * 160.0f;
+        mPhysicalCoeff = SensorManager.GRAVITY_EARTH  * 39.37f * dpi * 0.84f;
 
-        mSimpleDetector = new SimpleGestureDetector(context, mGestureListener);
+        mGestureDetector = new XGestureDetector(context);
 
         super.setOnLongClickListener(new OnLongClickListener()
         {
             @Override
             public boolean onLongClick(View v)
             {
-                if (mActionListener != null) {
-                    mActionListener.onLongClicked();
-                }
                 return false;
             }
         });
@@ -151,17 +125,39 @@ public class XImageView extends View
     @Override
     public boolean onTouchEvent(MotionEvent event)
     {
-        //if (mIsReachedBorder) {
-        //    return false;
-        //}
-        return super.onTouchEvent(event); //(event.getPointerCount() == 1 && mBitmapManager.isReachedBorder());
+        return super.onTouchEvent(event);
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event)
+    {
+        mGestureDetector.onTouchEvent(event);
+
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                Log.e(TAG, "intercept....");
+                interceptParentTouchEvent(true);
+                break;
+
+            case MotionEvent.ACTION_MOVE:
+                break;
+
+            case MotionEvent.ACTION_UP:
+                Log.e(TAG, "cancel intercept...");
+                interceptParentTouchEvent(false);
+                break;
+        }
+
+        return super.dispatchTouchEvent(event);
     }
 
     @Override
     protected void onDraw(Canvas canvas)
     {
+        int width = getWidth();
+        int height = getHeight();
         if (mBitmapManager != null) {
-            boolean show = mBitmapManager.drawVisibleBitmap(canvas, getWidth(), getHeight());
+            boolean show = mBitmapManager.drawVisibleBitmap(canvas, width, height);
 
             if (!show) {
                 //TODO: 显示正在加载
@@ -284,6 +280,15 @@ public class XImageView extends View
     }
 
     /**
+     * 设置监听
+     * @param listener
+     */
+    public void setActionListener(OnActionListener listener)
+    {
+        mActionListener = listener;
+    }
+
+    /**
      * 缩放到指定的大小, 起始是以当前的大小为准
      * 并且以屏幕中心进行缩放
      */
@@ -292,28 +297,6 @@ public class XImageView extends View
         mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
     }
 
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent event)
-    {
-        mSimpleDetector.onTouchEvent(event);
-
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-                Log.e(TAG, "intercept....");
-                interceptParentTouchEvent(true);
-                break;
-
-            case MotionEvent.ACTION_MOVE:
-                break;
-
-            case MotionEvent.ACTION_UP:
-                Log.e(TAG, "cancel intercept...");
-                interceptParentTouchEvent(false);
-                break;
-        }
-
-        return super.dispatchTouchEvent(event);
-    }
 
     private BitmapManager.IManagerCallback
             mManagerCallback = new BitmapManager.IManagerCallback()
@@ -327,37 +310,76 @@ public class XImageView extends View
         }
     };
 
-    /********************* Gesture Listener *******************************/
-    private SimpleGestureDetector.GestureListener
-            mGestureListener = new SimpleGestureDetector.GestureListener()
+    /********************* Gesture Detector & Listener *******************************/
+
+    private XOnGestureListener mGestureListener = new XOnGestureListener();
+    private class XGestureDetector extends GestureDetector
+    {
+        /**
+         * 放大手势检测
+         */
+        private ScaleGestureDetector mScaleDetector = null;
+
+        public XGestureDetector(Context context)
+        {
+            super(context, mGestureListener);
+            mScaleDetector = new ScaleGestureDetector(context, mGestureListener);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event)
+        {
+            stopFling();
+
+            mScaleDetector.onTouchEvent(event);
+
+            return super.onTouchEvent(event);
+        }
+    }
+
+    private class XOnGestureListener extends
+            GestureDetector.SimpleOnGestureListener implements ScaleGestureDetector.OnScaleGestureListener
     {
         @Override
-        public void onTapped(int x, int y)
+        public boolean onSingleTapConfirmed(MotionEvent e)
         {
-            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y);
+            int x = (int) e.getX();
+            int y = (int) e.getY();
+//            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y + " Is: " + (mBitmapManager != null && mBitmapManager.isTapOnImage(x, y)));
             if (mActionListener != null) {
-                // TODO: 检测点击是否在图片上
-                mActionListener.onTapped(false);
+                mActionListener.onSingleTapped(e, mBitmapManager != null && mBitmapManager.isTapOnImage(x, y));
             }
+            return true;
         }
 
         @Override
-        public void onDoubleClicked(int x, int y)
+        public boolean onDoubleTap(MotionEvent e)
         {
-            Log.e(TAG, "On Double Clicked X: " + x + " Y: " + y);
+            int x = (int) e.getX();
+            int y = (int) e.getY();
             mBitmapManager.scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
             if (mActionListener != null) {
-                mActionListener.onDoubleClicked();
+                mActionListener.onDoubleTapped(e);
             }
+            return true;
         }
 
         @Override
-        public boolean onMoving(int movingState, int dx, int dy)
+        public void onLongPress(MotionEvent e)
         {
-            Log.e(TAG, "MovingState: " + movingState);
-            int state = mBitmapManager.offsetShowBitmap(dx, dy);
+            if (mActionListener != null) {
+                mActionListener.onLongPressed(e);
+            }
+        }
 
-            if ((state & LEFT) == LEFT || (state & RIGHT) == RIGHT) {
+        /*************************************滑动****************************************/
+        @Override
+        public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY)
+        {
+            int state = mBitmapManager.offsetShowBitmap((int) -distanceX, (int) -distanceY);
+
+            if ((state & BitmapManager.LEFT) == BitmapManager.LEFT ||
+                    (state & BitmapManager.RIGHT) == BitmapManager.RIGHT) {
                 Log.e(TAG, "dis intercept...");
                 interceptParentTouchEvent(false);
             }
@@ -366,37 +388,126 @@ public class XImageView extends View
         }
 
         @Override
-        public boolean onScale(ScaleGestureDetector detector, int state)
+        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY)
+        {
+            Log.e(TAG, "VX: " + velocityX + "  VY: " + velocityY);
+            startFling(velocityX * 1.2f, velocityY * 1.2f);
+            return true;
+        }
+
+        /*************************************缩放**************************************/
+
+        @Override
+        public boolean onScale(ScaleGestureDetector detector)
         {
             float factor = detector.getScaleFactor();
-            switch (state) {
-                case STATE_BEG:
-                    break;
-
-                case STATE_ING:
-                    mBitmapManager.scaleShowBitmap(
-                            (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
-                    break;
-
-                case STATE_END:
-                    /**
-                     * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
-                     */
-                    mBitmapManager.updateSampleSize();
-                    break;
-            }
+            mBitmapManager.scaleShowBitmap(
+                    (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
 
             return true;
         }
-    };
 
+        @Override
+        public boolean onScaleBegin(ScaleGestureDetector detector)
+        {
+            return true;
+        }
 
-    private OnActionListener mActionListener = null;
+        @Override
+        public void onScaleEnd(ScaleGestureDetector detector)
+        {
+            /**
+             * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
+             */
+            mBitmapManager.updateSampleSize();
+        }
 
-    public void setActionListener(OnActionListener listener)
-    {
-        mActionListener = listener;
     }
+
+    /**********************************滑动惯性*******************************/
+
+    private float mPhysicalCoeff;
+    private float mFlingFriction = ViewConfiguration.getScrollFriction();
+    private final static float DECELERATION_RATE = (float) (Math.log(0.78) / Math.log(0.9));
+    private final static float INFLEXION = 0.35f; // Tension lines cross at (INFLEXION, 1)
+
+    private ValueAnimator mValueAnimator = null;
+
+    private void stopFling()
+    {
+        if (mValueAnimator != null) {
+            mValueAnimator.cancel();
+        }
+    }
+
+    private void startFling(final float velocityX, final float velocityY)
+    {
+        stopFling();
+
+        final float fx = (velocityX < 0 ? 1 : -1);
+        final float fy = (velocityY < 0 ? 1 : -1);
+
+        final float velocity = (float) Math.hypot(velocityX, velocityY);
+        final long duration = getSplineFlingDuration(velocity);
+
+        mValueAnimator = ValueAnimator.ofFloat(1f, 0);
+        mValueAnimator.setInterpolator(new LinearInterpolator());
+        mValueAnimator.setDuration(duration);
+        mValueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener()
+        {
+            private Double mLastDisX = Double.NaN;
+            private Double mLastDisY = Double.NaN;
+
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation)
+            {
+                float value = (float) animation.getAnimatedValue();
+
+                double curDisX = getSplineFlingDistance(value * velocityX) * fx;
+                double curDisY = getSplineFlingDistance(value * velocityY) * fy;
+
+                if (mLastDisX.isNaN() || mLastDisY.isNaN()) {
+                    mLastDisX = curDisX;
+                    mLastDisY = curDisY;
+                    return;
+                }
+
+                int dx = (int) (curDisX - mLastDisX);
+                int dy = (int) (curDisY - mLastDisY);
+
+//                Log.e(TAG, "Dx: " + dx + "  DY: " + dy);
+
+                if (mBitmapManager != null) {
+                    mBitmapManager.offsetShowBitmap(dx, dy);
+                }
+
+                mLastDisX = curDisX;
+                mLastDisY = curDisY;
+            }
+        });
+
+        mValueAnimator.start();
+    }
+
+    private double getSplineDeceleration(float velocity)
+    {
+        return Math.log(INFLEXION * Math.abs(velocity) / (mFlingFriction * mPhysicalCoeff));
+    }
+
+    private int getSplineFlingDuration(float velocity)
+    {
+        final double l = getSplineDeceleration(velocity);
+        final double decelMinusOne = DECELERATION_RATE - 1.0;
+        return (int) (1000.0 * Math.exp(l / decelMinusOne));
+    }
+
+    private double getSplineFlingDistance(float velocity)
+    {
+        final double l = getSplineDeceleration(velocity);
+        final double decelMinusOne = DECELERATION_RATE - 1.0;
+        return mFlingFriction * mPhysicalCoeff * Math.exp(DECELERATION_RATE / decelMinusOne * l);
+    }
+
 
     public interface OnActionListener
     {
@@ -404,21 +515,33 @@ public class XImageView extends View
          * 在View上点击了一次（而且没有双击）
          * @param onImage 是否点击在了有效的图片上
          */
-        void onTapped(boolean onImage);
+        void onSingleTapped(MotionEvent event, boolean onImage);
 
         /**
          * 双击了
          */
-        void onDoubleClicked();
+        void onDoubleTapped(MotionEvent event);
 
         /**
          * 长按了
          */
-        void onLongClicked();
+        void onLongPressed(MotionEvent event);
 
         /**
          * 初始化完成，图片已经显示
          */
         void onSetImageFinished();
     }
+
+
+    private int dpToPx(float dp)
+    {
+        return (int) (dp * mDisplayDensity + 0.5f);
+    }
+
+    private int pxToDp(float px)
+    {
+        return (int) (px / mDisplayDensity + 0.5f);
+    }
+
 }
