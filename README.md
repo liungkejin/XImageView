@@ -1,6 +1,6 @@
 # XImageView
 
-XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 拖动，单击，长按等手势操作,
+XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 拖动，单击，长按等手势操作, 支持惯性滑动
 并不会出现 OOM 的情况! 欢迎使用
 
 <img src="https://github.com/liungkejin/XImageView/blob/master/images/S60129-005846.jpg" width=400/>
