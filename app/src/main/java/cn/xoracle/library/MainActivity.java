@@ -1,9 +1,18 @@
 package cn.xoracle.library;
 
+import android.app.AlertDialog;
+import android.app.ProgressDialog;
+import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.widget.ProgressBar;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,83 +24,94 @@ public class MainActivity extends AppCompatActivity
 
     private XImageView mXImageView = null;
 
+    private AlertDialog mDialog = null;
+
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mXImageView = (XImageView) findViewById(R.id.superImageView);
-        mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "World.jpg"));
+        mDialog = new ProgressDialog.Builder(this).setCancelable(true).create();
+        ProgressBar bar = new ProgressBar(this);
+        mDialog.setContentView(bar);
+        mDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
 
-        new Handler().postDelayed(new Runnable()
+
+        mXImageView = (XImageView) findViewById(R.id.xImageView);
+        mXImageView.setActionListener(new XImageView.OnActionListener()
         {
             @Override
-            public void run()
+            public void onSingleTapped(MotionEvent event, boolean onImage)
             {
-                try {
-                    mXImageView.setImage(getAssets().open("b.jpg"));
+                toastShort("X: " + event.getX() + "  Y: " + event.getY() + " TapOnImage: " + onImage);
+                mXImageView.scaleToMinFitView((int) event.getX(), (int) event.getY(), true, 1000);
+            }
+
+            @Override
+            public void onDoubleTapped(MotionEvent event)
+            {
+                toastShort("Double Tapped: " + event.getX() + ", " + event.getY());
+            }
+
+            @Override
+            public void onLongPressed(MotionEvent event)
+            {
+                toastShort("onLongPressed..." + event.getX() + ", " + event.getY());
+                mXImageView.scaleToMaxFitView((int) event.getX(), (int) event.getY(), true, 1000);
+            }
+
+            @Override
+            public void onSetImageFinished(boolean success, Rect image)
+            {
+                toastShort("OnSetImageFinished: Success : " + success + " Image: " + image);
+                mDialog.dismiss();
+            }
+        });
+
+        try {
+            mXImageView.setImage(getAssets().open("b.jpg"));
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        View btn = findViewById(R.id.buttonSwitch);
+        btn.setOnClickListener(new View.OnClickListener()
+        {
+            @Override
+            public void onClick(View v)
+            {
+                mDialog.show();
+                if (v.getTag() == null) {
+                    mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "Manor.jpg"));
+                    v.setTag(2);
                 }
-                catch (IOException e) {
-                    e.printStackTrace();
+                else {
+                    try {
+                        mXImageView.setImage(getAssets().open("b.jpg"));
+                    }
+                    catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    v.setTag(null);
                 }
             }
-        }, 15000);
-//        ViewPager viewPager = (ViewPager) findViewById(R.id.viewPager);
-//        viewPager.setAdapter(new PagerAdapter()
-//        {
-//            @Override
-//            public int getCount()
-//            {
-//                return 1;
-//            }
-//
-//            @Override
-//            public Object instantiateItem(ViewGroup container, int position)
-//            {
-//                View view = View.inflate(MainActivity.this, R.layout.layout_page, null);
-//                SuperImageView imageView = (SuperImageView) view.findViewById(R.id.superImageView);
-//
-//                switch (position) {
-//                    case 0:
-//                        File file = new File(Environment.getExternalStorageDirectory(), "World.jpg");
-//                        imageView.setImage(file);
-//                        break;
-//
-//                    case 1:
-////                        try {
-////                            Bitmap bitmap = BitmapFactory.decodeStream(getAssets().open("b.jpg"));
-////                            imageView.setImage(bitmap);
-////                        }
-////                        catch (IOException e) {
-////                            e.printStackTrace();
-////                        }
-//                        Bitmap bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.a);
-//                        imageView.setImage(bitmap);
-//                        break;
-//
-//                    case 2:
-//                        Bitmap bitmap2 = BitmapFactory.decodeResource(getResources(), R.drawable.b);
-//                        imageView.setImage(bitmap2);
-//                        break;
-//                }
-//
-//                container.addView(view, 0);
-//                return view;
-//            }
-//
-//
-//            @Override
-//            public void destroyItem(ViewGroup container, int position, Object object)
-//            {
-//                container.removeView((View) object);
-//            }
-//
-//            @Override
-//            public boolean isViewFromObject(View view, Object object)
-//            {
-//                return view == object;
-//            }
-//        });
+        });
+
+        btn.setOnLongClickListener(new View.OnLongClickListener()
+        {
+            @Override
+            public boolean onLongClick(View v)
+            {
+                mXImageView.scrollImage(100, 100);
+                return true;
+            }
+        });
+    }
+
+    private void toastShort(String msg)
+    {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 }

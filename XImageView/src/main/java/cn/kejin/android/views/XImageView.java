@@ -1,12 +1,12 @@
 package cn.kejin.android.views;
 
-import android.animation.Animator;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.hardware.SensorManager;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -16,7 +16,6 @@ import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewParent;
-import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 
 import java.io.File;
@@ -31,9 +30,6 @@ import java.io.InputStream;
 
 /**
  * 能显示大长图
- * TODO: 自定义初始化状态
- * TODO: 优化代码
- * TODO: 显示正在加载， 并增加接口
  * TODO: 解决ViewPager的冲突, 重写自己的ViewPager
  */
 public class XImageView extends View
@@ -59,7 +55,6 @@ public class XImageView extends View
      * bitmap 的管理器
      */
     private BitmapManager mBitmapManager = null;
-
 
 
     private float mDisplayDensity = 1;
@@ -135,7 +130,6 @@ public class XImageView extends View
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                Log.e(TAG, "intercept....");
                 interceptParentTouchEvent(true);
                 break;
 
@@ -143,7 +137,6 @@ public class XImageView extends View
                 break;
 
             case MotionEvent.ACTION_UP:
-                Log.e(TAG, "cancel intercept...");
                 interceptParentTouchEvent(false);
                 break;
         }
@@ -158,10 +151,6 @@ public class XImageView extends View
         int height = getHeight();
         if (mBitmapManager != null) {
             boolean show = mBitmapManager.drawVisibleBitmap(canvas, width, height);
-
-            if (!show) {
-                //TODO: 显示正在加载
-            }
         }
     }
 
@@ -188,8 +177,7 @@ public class XImageView extends View
     }
 
     /**
-     * 劫持输入事件, ViewPager
-     * @param intercept
+     * 是否劫持输入事件, ViewPager
      */
     private void interceptParentTouchEvent(boolean intercept)
     {
@@ -209,15 +197,13 @@ public class XImageView extends View
      * @param bitmap 图片
      * @param cache 是否需要将bitmap 保存为文件再 转换为InputStream
      */
-    public void setImage(final Bitmap bitmap, boolean cache)
+    public void setImage(Bitmap bitmap, boolean cache)
     {
-        long before = System.currentTimeMillis();
         if (mBitmapManager != null) {
             mBitmapManager.onDestroy();
         }
 
         mBitmapManager = new BitmapManager(this, bitmap, cache, mManagerCallback);
-        Log.e(TAG, "Set Image Time: " + (System.currentTimeMillis() - before));
     }
 
 
@@ -245,6 +231,7 @@ public class XImageView extends View
     public void setImage(File file, Bitmap.Config config)
     {
         if (file == null || !file.exists()) {
+            setImage((InputStream) null, config);
             return;
         }
 
@@ -267,14 +254,11 @@ public class XImageView extends View
 
     public void setImage(InputStream is, Bitmap.Config config)
     {
-        long before = System.currentTimeMillis();
         if (mBitmapManager != null) {
             mBitmapManager.onDestroy();
         }
 
         mBitmapManager = new BitmapManager(this, is, config, mManagerCallback);
-
-        Log.e(TAG, "Set Image Time: " + (System.currentTimeMillis() - before));
     }
 
     /**
@@ -290,11 +274,78 @@ public class XImageView extends View
      * 缩放到指定的大小, 起始是以当前的大小为准
      * 并且以屏幕中心进行缩放
      */
-    public void scaleTo(float dest, boolean smooth, int smoothTime)
+    public void scaleImage(float dest, boolean smooth, int smoothTime)
     {
         if (mBitmapManager != null) {
             mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
         }
+    }
+
+    /**
+     * 以一点为中心缩放图片
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param dest 缩放的目标倍数， 这是以当前的放大倍数来计算的
+     * @param smooth 是否使用动画
+     * @param smoothTime 动画时间
+     */
+    public void scaleImage(int cx, int cy, float dest, boolean smooth, int smoothTime)
+    {
+        if (mBitmapManager != null) {
+            mBitmapManager.scaleTo(cx, cy, dest, smooth, smoothTime);
+        }
+    }
+
+    /**
+     * 放大到最大适应View（就是图片宽高 >= View的宽高）
+     */
+    public void scaleToMaxFitView(int cx, int cy, boolean smooth, int smoothTime)
+    {
+        if (mBitmapManager != null) {
+            mBitmapManager.scaleToMaxFitView(cx, cy, smooth, smoothTime);
+        }
+    }
+
+    /**
+     * 放大到最小适应View (就是图片宽高 <= View的宽高)
+     */
+    public void scaleToMinFitView(int cx, int cy, boolean smooth, int smoothTime)
+    {
+        if (mBitmapManager != null) {
+            mBitmapManager.scaleToMinFitView(cx, cy, smooth, smoothTime);
+        }
+    }
+
+    /**
+     * 获取当前图片的缩放的倍数
+     * @return 放大的倍数, 相对图片的原始图片的尺寸来说的
+     */
+    public float getScaleFactor()
+    {
+        return (mBitmapManager != null) ? mBitmapManager.getCurScaleFactor() : 0f;
+    }
+
+    /**
+     * 滑动图片, 返回当前已经到达的边界
+     * LEFT
+     * RIGHT
+     * TOP
+     * BOTTOM
+     * @param dx x轴滑动的像素
+     * @param dy y轴滑动的像素
+     * @return 当已经到达的边界的 与 值
+     */
+    public int scrollImage(int dx, int dy)
+    {
+        return (mBitmapManager != null) ? mBitmapManager.offsetShowBitmap(dx, dy) : 0;
+    }
+
+    /**
+     * 获取图片的尺寸，注意最好在 onSetImageFinished() 之后获取这个值
+     */
+    public Rect getImageRect()
+    {
+        return (mBitmapManager != null) ? mBitmapManager.getImageRect() : new Rect();
     }
 
 
@@ -302,10 +353,10 @@ public class XImageView extends View
             mManagerCallback = new BitmapManager.IManagerCallback()
     {
         @Override
-        public void onSetImageFinished(boolean success)
+        public void onSetImageFinished(boolean success, Rect image)
         {
             if (mActionListener != null) {
-                mActionListener.onSetImageFinished();
+                mActionListener.onSetImageFinished(success, image);
             }
         }
     };
@@ -388,7 +439,7 @@ public class XImageView extends View
 
             if ((state & BitmapManager.LEFT) == BitmapManager.LEFT ||
                     (state & BitmapManager.RIGHT) == BitmapManager.RIGHT) {
-                Log.e(TAG, "dis intercept...");
+//                Log.e(TAG, "dis intercept...");
                 interceptParentTouchEvent(false);
             }
 
@@ -398,7 +449,7 @@ public class XImageView extends View
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY)
         {
-            Log.e(TAG, "VX: " + velocityX + "  VY: " + velocityY);
+//            Log.e(TAG, "VX: " + velocityX + "  VY: " + velocityY);
             startFling(velocityX * 1.2f, velocityY * 1.2f);
             return true;
         }
@@ -543,8 +594,9 @@ public class XImageView extends View
 
         /**
          * 初始化完成，图片已经显示
+         * 返回是否成功，并返回图片的尺寸
          */
-        void onSetImageFinished();
+        void onSetImageFinished(boolean success, Rect image);
     }
 
 

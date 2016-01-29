@@ -7,14 +7,25 @@
     tools:context="cn.xoracle.library.MainActivity">
 
     <cn.kejin.android.views.XImageView
-        android:id="@+id/superImageView"
+        android:id="@+id/xImageView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="#202020"/>
-    <android.support.v4.view.ViewPager
-        android:id="@+id/viewPager"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"/>
+
+    <!--<android.support.v4.view.ViewPager-->
+        <!--android:id="@+id/viewPager"-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="match_parent"-->
+        <!--android:visibility="gone"/>-->
+
+    <TextView
+        android:id="@+id/buttonSwitch"
+        android:layout_width="100dp"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|right"
+        android:background="#3f88ac"
+        android:text="换一张"
+        android:textColor="#ffffff"
+        android:gravity="center"/>
 
 </FrameLayout>
