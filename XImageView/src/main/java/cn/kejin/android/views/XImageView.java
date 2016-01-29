@@ -175,7 +175,6 @@ public class XImageView extends View
     protected void onAttachedToWindow()
     {
         super.onAttachedToWindow();
-        Log.e(TAG, "OnAttachedToWindow");
     }
 
     @Override
@@ -183,7 +182,6 @@ public class XImageView extends View
     {
         super.onDetachedFromWindow();
 
-        Log.e(TAG, "onDetachedFromWindow");
         if (mBitmapManager != null) {
             mBitmapManager.onDestroy();
         }
@@ -294,7 +292,9 @@ public class XImageView extends View
      */
     public void scaleTo(float dest, boolean smooth, int smoothTime)
     {
-        mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
+        if (mBitmapManager != null) {
+            mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
+        }
     }
 
 
@@ -355,6 +355,10 @@ public class XImageView extends View
         @Override
         public boolean onDoubleTap(MotionEvent e)
         {
+            if (mBitmapManager == null) {
+                return false;
+            }
+
             int x = (int) e.getX();
             int y = (int) e.getY();
             mBitmapManager.scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
@@ -376,6 +380,10 @@ public class XImageView extends View
         @Override
         public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY)
         {
+            if (mBitmapManager == null) {
+                return false;
+            }
+
             int state = mBitmapManager.offsetShowBitmap((int) -distanceX, (int) -distanceY);
 
             if ((state & BitmapManager.LEFT) == BitmapManager.LEFT ||
@@ -400,6 +408,10 @@ public class XImageView extends View
         @Override
         public boolean onScale(ScaleGestureDetector detector)
         {
+            if (mBitmapManager == null) {
+                return false;
+            }
+
             float factor = detector.getScaleFactor();
             mBitmapManager.scaleShowBitmap(
                     (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
@@ -419,7 +431,9 @@ public class XImageView extends View
             /**
              * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
              */
-            mBitmapManager.updateSampleSize();
+            if (mBitmapManager != null) {
+                mBitmapManager.updateSampleSize();
+            }
         }
 
     }
