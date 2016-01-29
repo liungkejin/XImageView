@@ -61,7 +61,7 @@ void setImage(InputStream is, Bitmap.Config config);
 
 ```
 
-监听单击, 双击， 长按, 和 设置完成 事件, 如果需要监听onSetImageFinished(), 需要在 SetImage 之前设置这个监听
+监听单击, 双击， 长按, 和 设置完成 事件, 如果需要监听`onSetImageFinished()`, 需要在`setImage()`之前设置这个监听
 ```java
 // 监听单击, 双击， 长按, 和 设置完成 事件
 mXImageView.setActionListener(new XImageView.OnActionListener()
@@ -125,8 +125,8 @@ void scaleToMinFitView(int cx, int cy, boolean smooth, int smoothTime);
 float getScaleFactor();
 ```
 
-当滑动这个图片，如果已经到达了左边的边界， 已经不能再继续向右滑动，则 scrollImage 会 LEFT,
-如果这个图片左边和上边都已经不能继续滑动，则会返回 LEFT | TOP
+当滑动这个图片，如果已经到达了左边的边界， 已经不能再继续向右滑动，则 `scrollImage()` 会 `LEFT`,
+如果这个图片左边和上边都已经不能继续滑动，则会返回 `LEFT | TOP`
 ```java
 /**
  * 滑动图片, 返回当前已经到达的边界
