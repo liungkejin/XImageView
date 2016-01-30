@@ -308,6 +308,10 @@ public class BitmapManager
         int iw = mImageRect.width();
         int ih = mImageRect.height();
 
+        if (vw * vh * iw * ih == 0) {
+            return;
+        }
+
         /**
          * 计算最大和最小缩放值
          * 如果一边 < 对应的view边, 最大放大到 max(3, 最大适应view)， 最小缩小到 min(最小适应view, 1);
@@ -587,8 +591,8 @@ public class BitmapManager
      */
     private float getMaxFitViewScaleFactor()
     {
-        float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
-        float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
+        float ws = mShowBitmapRect.width() == 0 ? 0 : mViewRect.width() * 1f / mShowBitmapRect.width();
+        float hs = mShowBitmapRect.height() == 0 ? 0 : mViewRect.height() * 1f / mShowBitmapRect.height();
 
         return Math.max(ws, hs);
     }
@@ -599,8 +603,8 @@ public class BitmapManager
      */
     private float getMinFitViewScaleFactor()
     {
-        float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
-        float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
+        float ws = mShowBitmapRect.width() == 0 ? 0 : mViewRect.width() * 1f / mShowBitmapRect.width();
+        float hs = mShowBitmapRect.height() == 0 ? 0 : mViewRect.height() * 1f / mShowBitmapRect.height();
 
         return Math.min(ws, hs);
     }
@@ -628,7 +632,7 @@ public class BitmapManager
      */
     public void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
     {
-        if (checkImageNotAvailable()) {
+        if (checkImageNotAvailable() && isRectValid(mShowBitmapRect)) {
             return;
         }
 
@@ -753,6 +757,10 @@ public class BitmapManager
      */
     private float getMinFitViewValue()
     {
+        if (checkImageNotAvailable()) {
+            return 0f;
+        }
+
         float iw = mImageRect.width();
         float ih = mImageRect.height();
 
@@ -767,6 +775,10 @@ public class BitmapManager
      */
     private float getMaxFitViewValue()
     {
+        if (checkImageNotAvailable()) {
+            return 0f;
+        }
+
         float iw = mImageRect.width();
         float ih = mImageRect.height();
 
@@ -832,7 +844,7 @@ public class BitmapManager
     private boolean checkImageNotAvailable()
     {
         return (mIsSettingImage || (mSrcBitmap == null && mDecoder == null)
-                    || mImageRect.width() <= 0 || mImageRect.height() <= 0);
+                || mImageRect.width() <= 0 || mImageRect.height() <= 0);
     }
 
     /**
@@ -1504,6 +1516,14 @@ public class BitmapManager
         }
 
         return sample;
+    }
+
+    /**
+     * 检查矩形是否有效
+     */
+    private boolean isRectValid(Rect rect)
+    {
+        return rect.width() > 0 && rect.height() > 0;
     }
 
 

@@ -7,7 +7,6 @@ import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
 import android.support.v7.app.AppCompatActivity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -32,11 +31,9 @@ public class MainActivity extends AppCompatActivity
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mDialog = new ProgressDialog.Builder(this).setCancelable(true).create();
         ProgressBar bar = new ProgressBar(this);
-        mDialog.setContentView(bar);
+        mDialog = new ProgressDialog.Builder(this).setCancelable(true).setView(bar).create();
         mDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-
 
         mXImageView = (XImageView) findViewById(R.id.xImageView);
         mXImageView.setActionListener(new XImageView.OnActionListener()
@@ -84,7 +81,7 @@ public class MainActivity extends AppCompatActivity
             {
                 mDialog.show();
                 if (v.getTag() == null) {
-                    mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "Manor.jpg"));
+                    mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "World.jpg"));
                     v.setTag(2);
                 }
                 else {
