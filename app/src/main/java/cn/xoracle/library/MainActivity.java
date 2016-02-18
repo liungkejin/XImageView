@@ -1,48 +1,109 @@
 package cn.xoracle.library;
 
-import android.app.AlertDialog;
-import android.app.ProgressDialog;
-import android.graphics.Color;
 import android.graphics.Rect;
-import android.graphics.drawable.ColorDrawable;
 import android.os.Bundle;
 import android.os.Environment;
+import android.support.v4.view.PagerAdapter;
+import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.IOException;
 
 import cn.kejin.android.views.XImageView;
 
 public class MainActivity extends AppCompatActivity
 {
-
-    private XImageView mXImageView = null;
-
-    private AlertDialog mDialog = null;
-
     @Override
     protected void onCreate(Bundle savedInstanceState)
     {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        ProgressBar bar = new ProgressBar(this);
-        mDialog = new ProgressDialog.Builder(this).setCancelable(true).setView(bar).create();
-        mDialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        setupViewPager();
+    }
 
-        mXImageView = (XImageView) findViewById(R.id.xImageView);
-        mXImageView.setActionListener(new XImageView.OnActionListener()
+    private void setupViewPager()
+    {
+        ViewPager pager = (ViewPager) findViewById(R.id.viewPager);
+
+        pager.setAdapter(new PagerAdapter()
+        {
+            @Override
+            public int getCount()
+            {
+                return 10;
+            }
+
+            @Override
+            public boolean isViewFromObject(View view, Object object)
+            {
+                return view == object;
+            }
+
+            @Override
+            public Object instantiateItem(ViewGroup container, int position)
+            {
+                View view = View.inflate(MainActivity.this, R.layout.layout_page, null);
+
+                setupXImageView((XImageView) view.findViewById(R.id.xImageView), (ProgressBar) view.findViewById(R.id.progress), position);
+                container.addView(view);
+
+                return view;
+            }
+
+            @Override
+            public void destroyItem(ViewGroup container, int position, Object object)
+            {
+                container.removeView((View) object);
+            }
+        });
+    }
+
+    private void setupXImageView(XImageView imageView, final ProgressBar progressBar,  int pos)
+    {
+        try {
+            switch (pos % 6) {
+                case 0:
+                    imageView.setImage(getAssets().open("a.jpg"));
+                    break;
+
+                case 1:
+                    imageView.setImage(getAssets().open("b.jpg"));
+                    break;
+
+                case 2:
+                    imageView.setImage(new File(Environment.getExternalStorageDirectory(), "Manor.jpg"));
+                    break;
+
+                case 3:
+                    imageView.setImage(getAssets().open("c.jpg"));
+                    break;
+
+                case 4:
+                    imageView.setImage(getAssets().open("d.jpg"));
+                    break;
+
+                case 5:
+                    imageView.setImage(getAssets().open("e.jpg"));
+                    break;
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        progressBar.setVisibility(View.VISIBLE);
+        imageView.setActionListener(new XImageView.OnActionListener()
         {
             @Override
             public void onSingleTapped(MotionEvent event, boolean onImage)
             {
                 toastShort("X: " + event.getX() + "  Y: " + event.getY() + " TapOnImage: " + onImage);
-                mXImageView.scaleToMinFitView((int) event.getX(), (int) event.getY(), true, 1000);
             }
 
             @Override
@@ -55,54 +116,20 @@ public class MainActivity extends AppCompatActivity
             public void onLongPressed(MotionEvent event)
             {
                 toastShort("onLongPressed..." + event.getX() + ", " + event.getY());
-                mXImageView.scaleToMaxFitView((int) event.getX(), (int) event.getY(), true, 1000);
             }
 
             @Override
             public void onSetImageFinished(boolean success, Rect image)
             {
                 toastShort("OnSetImageFinished: Success : " + success + " Image: " + image);
-                mDialog.dismiss();
-            }
-        });
-
-        try {
-            mXImageView.setImage(getAssets().open("b.jpg"));
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        View btn = findViewById(R.id.buttonSwitch);
-        btn.setOnClickListener(new View.OnClickListener()
-        {
-            @Override
-            public void onClick(View v)
-            {
-                mDialog.show();
-                if (v.getTag() == null) {
-                    mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "Manor.jpg"));
-                    v.setTag(2);
-                }
-                else {
-                    try {
-                        mXImageView.setImage(getAssets().open("b.jpg"));
+                runOnUiThread(new Runnable()
+                {
+                    @Override
+                    public void run()
+                    {
+                        progressBar.setVisibility(View.GONE);
                     }
-                    catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    v.setTag(null);
-                }
-            }
-        });
-
-        btn.setOnLongClickListener(new View.OnLongClickListener()
-        {
-            @Override
-            public boolean onLongClick(View v)
-            {
-                mXImageView.scrollImage(100, 100);
-                return true;
+                });
             }
         });
     }

@@ -459,14 +459,14 @@ public class BitmapManager
         if (detectRect.left <= 0) {
             result |= LEFT;
         }
-        if (detectRect.right >= mShowBitmapRect.right) {
+        if (detectRect.right >= (int)mShowBitmapRect.right) {
             result |= RIGHT;
         }
 
         if (detectRect.top <= 0) {
             result |= TOP;
         }
-        if (detectRect.bottom >= mShowBitmapRect.bottom) {
+        if (detectRect.bottom >= (int)mShowBitmapRect.bottom) {
             result |= BOTTOM;
         }
 
@@ -1406,9 +1406,9 @@ public class BitmapManager
                         canvas.drawBitmap(bitmap, null, vRect, null);
                     }
 
-                    mPaint.setColor(Color.MAGENTA);
-                    mPaint.setStrokeWidth(2);
-                    canvas.drawRect(toViewCoordinate(rect), mPaint);
+//                    mPaint.setColor(Color.MAGENTA);
+//                    mPaint.setStrokeWidth(2);
+//                    canvas.drawRect(toViewCoordinate(rect), mPaint);
                 }
             }
 

@@ -134,6 +134,9 @@ public class XImageView extends View
                 break;
 
             case MotionEvent.ACTION_MOVE:
+                if (mBitmapManager == null) {
+                    interceptParentTouchEvent(false);
+                }
                 break;
 
             case MotionEvent.ACTION_UP:

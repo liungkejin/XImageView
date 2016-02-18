@@ -1,6 +1,6 @@
 # XImageView
 
-XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 拖动，单击，长按等手势操作, 支持惯性滑动
+XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 拖动，单击，长按等手势操作, 支持惯性滑动, 支持ViewPager
 
 不会出现 OOM 的情况! 欢迎使用
 
@@ -17,9 +17,6 @@ XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 
 
 **这里可以下载这些大图 http://pan.baidu.com/s/1mhw6Qko**
 
-
-## Issues
-1. 暂时不能和 ViewPager 一起使用
 
 ## Usage
 
