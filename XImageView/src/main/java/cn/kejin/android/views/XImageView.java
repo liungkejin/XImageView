@@ -465,7 +465,7 @@ public class XImageView extends View
 
             float factor = detector.getScaleFactor();
             mBitmapManager.scaleShowBitmap(
-                    (int) detector.getFocusX(), (int) detector.getFocusY(), factor);
+                    detector.getFocusX(), detector.getFocusY(), factor);
 
             return true;
         }

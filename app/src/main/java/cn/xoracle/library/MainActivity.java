@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity
             {
                 mDialog.show();
                 if (v.getTag() == null) {
-                    mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "World.jpg"));
+                    mXImageView.setImage(new File(Environment.getExternalStorageDirectory(), "Manor.jpg"));
                     v.setTag(2);
                 }
                 else {

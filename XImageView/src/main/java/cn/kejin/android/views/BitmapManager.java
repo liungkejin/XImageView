@@ -7,6 +7,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.BitmapRegionDecoder;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Handler;
@@ -15,6 +17,7 @@ import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.LinearInterpolator;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -30,7 +33,13 @@ import java.util.UUID;
 public class BitmapManager
 {
     public final static String TAG = "BitmapManager";
-
+    private final static Paint mPaint = new Paint();
+    static {
+        mPaint.setAntiAlias(true);
+        mPaint.setColor(Color.WHITE);
+        mPaint.setStyle(Paint.Style.STROKE);
+        mPaint.setStrokeWidth(2);
+    }
 
     /**
      * 异步处理图片的解码
@@ -93,13 +102,13 @@ public class BitmapManager
      * 在计算的时候，需要缩放比例来
      * Bitmap 坐标系
      */
-    private Rect mShowBitmapRect = new Rect();
+    private RectF mShowBitmapRect = new RectF();
 
     /**
      * 用于缩放的 rect
      * Bitmap 坐标系
      */
-    private RectF mShowBitmapRectF = new RectF();
+//    private RectF mShowBitmapRectF = new RectF();
 
     /**
      * 缩略图是的 rect
@@ -323,7 +332,6 @@ public class BitmapManager
             mMaxScaleValue = Math.max(3, getMaxFitViewValue());
             mMinScaleValue = Math.min(1, mMinScaleValue);
         }
-//        Log.e(TAG, "MaxScaleValue: " + mMaxScaleValue + " Min: " + mMinScaleValue);
 
         mViewRect.set(0, 0, vw, vh);
         /**
@@ -337,19 +345,19 @@ public class BitmapManager
          */
         ratio = ratio < 1 ? 1f : ratio;
         mShowBitmapRect.set(0, 0, (int) (iw / ratio), (int) (ih / ratio));
-        mShowBitmapRectF.set(mShowBitmapRect);
 
         /**
          * 保存初始大小
          */
-        mThumbShowBitmapRect.set(mShowBitmapRect);
+//        mThumbShowBitmapRect.set(mShowBitmapRect);
+        mShowBitmapRect.round(mThumbShowBitmapRect);
 
         /**
          * 设置为正中间
          */
-        int left = (mShowBitmapRect.width() - mViewRect.width())/2;
+        int left = (int) ((mShowBitmapRect.width() - mViewRect.width())/2);
         int right = left + mViewRect.width();
-        int top = (mShowBitmapRect.height() - mViewRect.height())/2;
+        int top = (int) ((mShowBitmapRect.height() - mViewRect.height())/2);
         int bottom = top + mViewRect.height();
         mViewBitmapRect.set(left, top, right, bottom);
 
@@ -396,7 +404,8 @@ public class BitmapManager
             return NONE;
         }
 
-        Rect oRect = toViewCoordinate(mShowBitmapRect);
+        Rect oRect = new Rect();
+        toViewCoordinate(mShowBitmapRect).round(oRect);
 
         /**
          * 检测边界
@@ -470,39 +479,42 @@ public class BitmapManager
      * @param cy 中心点的 y
      * @param sc 缩放系数
      */
-    public void scaleShowBitmap(int cx, int cy, float sc)
+    public void scaleShowBitmap(float cx, float cy, float sc)
     {
         if (checkImageNotAvailable()) {
             return;
         }
+//        Log.e(TAG, "SC: " + sc);
 
+        RectF viewRect = new RectF(mViewRect);
         /**
          * 如果图片的长或宽，全在视图内，则以中线进行缩放
          */
-        RectF oRect = toViewCoordinate(mShowBitmapRectF);
+        RectF oRect = toViewCoordinate(mShowBitmapRect);
 
+//        Log.e(TAG, "ShowRect:" + mShowBitmapRect +"  VC: " + oRect);
         /**
          * 如果宽全在视图内
          */
         if (oRect.left > 0 && oRect.right < mViewRect.right) {
-            cx = mViewRect.centerX();
+            cx = viewRect.centerX();
         }
 
         /**
          * 如果高全在视图内
          */
         if (oRect.top > 0 && oRect.bottom < mViewRect.bottom) {
-            cy = mViewRect.centerY();
+            cy = viewRect.centerY();
         }
 
         /**
          * 以cx, cy缩放
          */
         float left = (cx - Math.abs(cx - oRect.left) * sc);
-        float right = (cx + Math.abs(oRect.right - cx) * sc);
-
         float top = (cy - Math.abs(cy - oRect.top) * sc);
-        float bottom = ((right - left) * getImageRatio() + top);
+
+        float right = left + oRect.width() * sc;
+        float bottom = top + oRect.height() * sc;
 
         RectF nRect = new RectF(left, top, right, bottom);
 
@@ -522,42 +534,43 @@ public class BitmapManager
          * 更新ViewBitmapRect坐标, 并更新显示的bitmap rect 大小
          */
         updateViewBitmapRect(nRect);
+//        Log.e(TAG, "ShowRect:" + mShowBitmapRect + "  VC: " + nRect);
 
         /**
          * 如果还是小于视图宽度，则需要移动到正正中间
          */
         float nx = 0;
         float ny = 0;
-        RectF aRect = toViewCoordinate(mShowBitmapRectF);
-        if (aRect.width() < mViewRect.width()) {
-            nx = mViewRect.centerX() - aRect.centerX();
+        RectF aRect = toViewCoordinate(mShowBitmapRect);
+        if (aRect.width() < viewRect.width()) {
+            nx = viewRect.centerX() - aRect.centerX();
         }
         else {
             if (aRect.left > 0) {
                 nx = -aRect.left;
             }
-            else if (aRect.right < mViewRect.width()) {
-                nx = mViewRect.width() - aRect.right;
+            else if (aRect.right < viewRect.width()) {
+                nx = viewRect.width() - aRect.right;
             }
         }
 
-        if (aRect.height() < mViewRect.height()) {
-            ny = mViewRect.centerY() - aRect.centerY();
+        if (aRect.height() < viewRect.height()) {
+            ny = viewRect.centerY() - aRect.centerY();
         }
         else {
             if (aRect.top > 0) {
                 ny = -aRect.top;
             }
-            else if (aRect.bottom < mViewRect.height()) {
-                ny = mViewRect.height() - aRect.bottom;
+            else if (aRect.bottom < viewRect.height()) {
+                ny = viewRect.height() - aRect.bottom;
             }
         }
 
         aRect.offset(nx, ny);
         updateViewBitmapRect(aRect);
+//        Log.e(TAG, "ShowRect:" + mShowBitmapRect+ "  VC: " + nRect);
 
-//        Log.e(TAG, "After Scale Rect: " + nRect + " Show: " + mShowBitmapRect);
-//        Log.e(TAG, "Visible Rect: " + mViewBitmapRect);
+//        Log.e(TAG, "=====================================================================");
 
         invalidate();
     }
@@ -599,7 +612,6 @@ public class BitmapManager
 
     /**
      * 获取最小适应view 的缩放倍数
-     * @return
      */
     private float getMinFitViewScaleFactor()
     {
@@ -611,7 +623,6 @@ public class BitmapManager
 
     /**
      * 获取当前的缩放倍数, 相对原图的尺寸
-     * @return
      */
     public float getCurScaleFactor()
     {
@@ -641,8 +652,8 @@ public class BitmapManager
         float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
         float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
 
-        int sw = mShowBitmapRect.width();
-        int sh = mShowBitmapRect.height();
+        float sw = mShowBitmapRect.width();
+        float sh = mShowBitmapRect.height();
 
         int tw = mThumbShowBitmapRect.width();
         int th = mThumbShowBitmapRect.height();
@@ -793,16 +804,11 @@ public class BitmapManager
      */
     private void resetShowBitmapRect()
     {
-        if (mShowBitmapRect == mThumbShowBitmapRect) {
-            return;
-        }
-
         mShowBitmapRect.set(mThumbShowBitmapRect);
-        mShowBitmapRectF.set(mShowBitmapRect);
 
-        int left = (mShowBitmapRect.width() - mViewRect.width())/2;
+        int left = (int) ((mShowBitmapRect.width() - mViewRect.width())/2);
         int right = left + mViewRect.width();
-        int top = (mShowBitmapRect.height() - mViewRect.height())/2;
+        int top = (int) ((mShowBitmapRect.height() - mViewRect.height())/2);
         int bottom = top + mViewRect.height();
         mViewBitmapRect.set(left, top, right, bottom);
     }
@@ -814,14 +820,13 @@ public class BitmapManager
     private void updateViewBitmapRect(RectF rect)
     {
         Rect vRect = new Rect(0, 0, mViewRect.width(), mViewRect.height());
-        vRect.left -= rect.left;
+        vRect.left = (int) -rect.left;
         vRect.right = vRect.left + mViewRect.width();
-        vRect.top -= rect.top;
+        vRect.top = (int) -rect.top;
         vRect.bottom = vRect.top + mViewRect.height();
 
         mViewBitmapRect.set(vRect);
-        mShowBitmapRectF.set(0, 0, rect.width(), rect.height());
-        mShowBitmapRect.set(0, 0, (int) rect.width(), (int) rect.height());
+        mShowBitmapRect.set(0, 0, rect.width(), rect.height());
     }
 
     /**
@@ -934,8 +939,8 @@ public class BitmapManager
     {
         int iw = mImageRect.width();
         int ih = mImageRect.height();
-        int bw = mShowBitmapRect.width();
-        int bh = mShowBitmapRect.height();
+        int bw = (int) mShowBitmapRect.width();
+        int bh = (int) mShowBitmapRect.height();
 
         /**
          * 以 bitmap 的宽高为标准
@@ -984,10 +989,10 @@ public class BitmapManager
     /**
      * 真实的 Bitmap 的尺寸就是 原图的 1/sampleSize
      */
-    private Rect getRealBitmapRect()
-    {
-        return rectMulti(mImageRect, 1f/mSampleSize);
-    }
+//    private Rect getRealBitmapRect()
+//    {
+//        return rectMulti(mImageRect, 1f/mSampleSize);
+//    }
 
     /**
      * 坐标转换, bitmap坐标转换为 view 坐标
@@ -1042,25 +1047,12 @@ public class BitmapManager
      */
     private Rect getVisibleShowBitmapRect()
     {
-        int left = Math.max(mShowBitmapRect.left, mViewBitmapRect.left);
-        int right = Math.min(mShowBitmapRect.right, mViewBitmapRect.right);
-        int top = Math.max(mShowBitmapRect.top, mViewBitmapRect.top);
-        int bottom = Math.min(mShowBitmapRect.bottom, mViewBitmapRect.bottom);
+        int left = (int) Math.max(mShowBitmapRect.left, mViewBitmapRect.left);
+        int right = (int) Math.min(mShowBitmapRect.right, mViewBitmapRect.right);
+        int top = (int) Math.max(mShowBitmapRect.top, mViewBitmapRect.top);
+        int bottom = (int) Math.min(mShowBitmapRect.bottom, mViewBitmapRect.bottom);
 
-        Rect rect = new Rect(left, top, right, bottom);
-//        Log.e(TAG, "VisibleShowBitmapRect: " + rect);
-
-        return rect;
-    }
-
-    /**
-     * 计算出可见区域的真实bitmap rect
-     */
-    private Rect getVisibleRealBitmapRect()
-    {
-        float ratio = getRealShowRatio();
-
-        return rectMulti(getVisibleShowBitmapRect(), ratio);
+        return new Rect(left, top, right, bottom);
     }
 
     /**
@@ -1260,6 +1252,9 @@ public class BitmapManager
                         if (isValidGrid(n, m)) {
                             decodeVisibleUnitBitmap(n, m);
                             mGrids[n][m].mIsLoading = false;
+                            if (mGrids[n][m].mCurSampleSize != mSampleSize) {
+                                return;
+                            }
                             postInvalidate();
                         }
                     }
@@ -1320,21 +1315,21 @@ public class BitmapManager
          */
         private Rect getShowBitmapUnit(int n, int m)
         {
-            Rect vRect = rectMulti(mViewRect, getShowImageRatio());
+            RectF vRect = rectMulti(mViewRect, getShowImageRatio());
 
-            int vw = vRect.width();
-            int vh = vRect.height();
+            float vw = vRect.width();
+            float vh = vRect.height();
 
-            int sWidth = mShowBitmapRect.width();
-            int sHeight = mShowBitmapRect.height();
+            float sWidth = mShowBitmapRect.width();
+            float sHeight = mShowBitmapRect.height();
 
-            int left = Math.min(m * vw, sWidth);
-            int right = Math.min(left + vw, sWidth);
+            float left = Math.min(m * vw, sWidth);
+            float right = Math.min(left + vw, sWidth);
 
-            int top = Math.min(n*vh, sHeight);
-            int bottom = Math.min(top + vh, sHeight);
+            float top = Math.min(n*vh, sHeight);
+            float bottom = Math.min(top + vh, sHeight);
 
-            return new Rect(left, top, right, bottom);
+            return new Rect((int)left, (int)top, (int)right, (int)bottom);
         }
 
         /**
@@ -1405,17 +1400,15 @@ public class BitmapManager
             for (int n = sn; n <= en; ++n) {
                 for (int m = sm; m <= em; ++m) {
                     Rect rect = getShowBitmapUnit(n, m);
-//                        synchronized (mGrids[n][m]) {
-                            Bitmap bitmap = getGridBitmap(n, m);
-                            if (bitmap != null) {
-                                Rect vRect = toViewCoordinate(rect);
-                                canvas.drawBitmap(bitmap, null, vRect, null);
-                            }
-//                        }
+                    Bitmap bitmap = getGridBitmap(n, m);
+                    if (bitmap != null) {
+                        Rect vRect = toViewCoordinate(rect);
+                        canvas.drawBitmap(bitmap, null, vRect, null);
+                    }
 
-//                    mPaint.setColor(Color.MAGENTA);
-//                    mPaint.setStrokeWidth(2);
-//                    canvas.drawRect(toViewCoordinate(rect), mPaint);
+                    mPaint.setColor(Color.MAGENTA);
+                    mPaint.setStrokeWidth(2);
+                    canvas.drawRect(toViewCoordinate(rect), mPaint);
                 }
             }
 
@@ -1449,7 +1442,6 @@ public class BitmapManager
          */
         private void decodeThumbUnitBitmap()
         {
-//            long before = System.currentTimeMillis();
             for (int n = 0; n < mN; ++n) {
                 for (int m = 0; m < mM; ++m) {
                     Rect rect = getUnitRect(n, m);
@@ -1459,7 +1451,6 @@ public class BitmapManager
                     }
                 }
             }
-//            Log.e(TAG, "Decode Thumb Spend Time: " + (System.currentTimeMillis() - before));
         }
 
 
@@ -1472,23 +1463,28 @@ public class BitmapManager
             /**
              * 将RealBitmap 也分割为 N x M 个单元格
              */
-            Rect vRect = rectMulti(mViewRect, getRealImageRatio());
+            /**
+             * 把视图缩小和真实bitmap大小等比例
+             */
+            float vw = mViewRect.width()*1f / mSampleSize;
+            float vh = mViewRect.height()*1f / mSampleSize;
 
-            int vw = vRect.width();
-            int vh = vRect.height();
-
-            Rect visibleBitmapRect = getVisibleRealBitmapRect();
+            /**
+             * 计算出可见区域的真实bitmap rect
+             */
+            RectF vBRect = rectMulti(getVisibleShowBitmapRect(), getRealShowRatio());
 
             /**
              * 根据这个rect , 算出所涉及到的单元格，并判断是否需要重新分配
              */
-            int sm = visibleBitmapRect.left / vw;
-            int sn = visibleBitmapRect.top / vh;
+            int sm = (int) (vBRect.left / vw);
+            int sn = (int) (vBRect.top / vh);
 
-            int em = visibleBitmapRect.right / vw;
-            int en = visibleBitmapRect.bottom / vh;
+            int em = (int) (sm + Math.ceil(vBRect.width() / vw));
+            int en = (int) (sn + Math.ceil(vBRect.height() / vh));
 
-//            Log.e(TAG, "S(" + sn + ", " + sm + ")" + " E(" + en + ", " + em +")");
+            em = em > mM ? mM : em;
+            en = en > mN ? mN : en;
 
             return new Rect(sm, sn, em, en);
         }
@@ -1497,12 +1493,20 @@ public class BitmapManager
     /**
      * rect 乘法
      */
-    private Rect rectMulti(Rect r, float ratio)
+    private RectF rectMulti(Rect r, float ratio)
     {
-        return new Rect((int)(r.left*ratio), (int)(r.top*ratio),
-                (int)(r.right*ratio), (int) (r.bottom*ratio));
+        return rectMulti(new RectF(r), ratio);
     }
 
+    private RectF rectMulti(RectF r, float ratio)
+    {
+        float left = r.left * ratio;
+        float top = r.top * ratio;
+        float right = left + r.width() * ratio;
+        float bottom = top + r.height() * ratio;
+
+        return new RectF(left, top, right, bottom);
+    }
 
     /**
      * 根据比率来获得合适的采样率, 因为采样率都是以 2^n 来定的
@@ -1521,7 +1525,7 @@ public class BitmapManager
     /**
      * 检查矩形是否有效
      */
-    private boolean isRectValid(Rect rect)
+    private boolean isRectValid(RectF rect)
     {
         return rect.width() > 0 && rect.height() > 0;
     }
@@ -1567,11 +1571,6 @@ public class BitmapManager
      */
     public interface IManagerCallback
     {
-        /**
-         * 需要执行一次 invalidate
-         */
-//        void onNeedPostInvalidate();
-
         void onSetImageFinished(boolean success, Rect image);
     }
 }
