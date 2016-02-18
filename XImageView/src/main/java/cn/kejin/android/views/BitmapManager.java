@@ -42,6 +42,11 @@ public class BitmapManager
     }
 
     /**
+     * 切换线程
+     */
+    private Handler mMainHandler = new Handler();
+
+    /**
      * 异步处理图片的解码
      */
     private Handler mLoadingHandler = null;
@@ -105,12 +110,6 @@ public class BitmapManager
     private RectF mShowBitmapRect = new RectF();
 
     /**
-     * 用于缩放的 rect
-     * Bitmap 坐标系
-     */
-//    private RectF mShowBitmapRectF = new RectF();
-
-    /**
      * 缩略图是的 rect
      * Bitmap 坐标系
      */
@@ -170,12 +169,12 @@ public class BitmapManager
     private void initialize(View view, @NonNull IManagerCallback callback)
     {
         mImageView = view;
-        mIsSettingImage = true;
+        mManagerCallback = callback;
+        onSetImageStart();
 
         mCacheFile = new File(view.getContext().getCacheDir(), UUID.randomUUID().toString());
         mCacheFile.deleteOnExit();
 
-        mManagerCallback = callback;
 
         mLoadingThread = new HandlerThread(THREAD_NAME + this.hashCode());
         mLoadingThread.start();
@@ -204,6 +203,12 @@ public class BitmapManager
         mImageView.postInvalidate();
     }
 
+    private void onSetImageStart()
+    {
+        mIsSettingImage = true;
+        mManagerCallback.onSetImageStart();
+    }
+
     /**
      * 开始设置图片的缩略图，View的rect 等数据
      */
@@ -222,16 +227,23 @@ public class BitmapManager
     /**
      * 设置图片结束
      */
-    private synchronized void onSetImageFinished(boolean success)
+    private synchronized void onSetImageFinished(final boolean success)
     {
-        Rect image = new Rect();
+        final Rect image = new Rect();
         if (success) {
             mIsSettingImage = false;
             image.set(mImageRect);
         }
 
+        mMainHandler.post(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                mManagerCallback.onSetImageFinished(success, image);
+            }
+        });
         postInvalidate();
-        mManagerCallback.onSetImageFinished(success, image);
     }
 
     /**
@@ -835,7 +847,7 @@ public class BitmapManager
     private boolean checkOrUpdateViewRect(int width, int height)
     {
         if (mViewRect.width() != width || mViewRect.height() != height) {
-            mIsSettingImage = true;
+            onSetImageStart();
             updateViewRect(width, height);
             return true;
         }
@@ -846,7 +858,7 @@ public class BitmapManager
     /**
      * 检查当前整个BitmapManager 是否有效
      */
-    private boolean checkImageNotAvailable()
+    public boolean checkImageNotAvailable()
     {
         return (mIsSettingImage || (mSrcBitmap == null && mDecoder == null)
                 || mImageRect.width() <= 0 || mImageRect.height() <= 0);
@@ -984,6 +996,14 @@ public class BitmapManager
     public boolean isTapOnImage(int x, int y)
     {
         return !checkImageNotAvailable() && toViewCoordinate(mShowBitmapRect).contains(x, y);
+    }
+
+    /**
+     * 检查是否正在设置图片
+     */
+    public boolean isSettingImage()
+    {
+        return mIsSettingImage;
     }
 
     /**
@@ -1571,6 +1591,7 @@ public class BitmapManager
      */
     public interface IManagerCallback
     {
+        void onSetImageStart();
         void onSetImageFinished(boolean success, Rect image);
     }
 }

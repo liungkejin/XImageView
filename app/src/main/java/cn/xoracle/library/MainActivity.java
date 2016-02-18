@@ -97,7 +97,6 @@ public class MainActivity extends AppCompatActivity
             e.printStackTrace();
         }
 
-        progressBar.setVisibility(View.VISIBLE);
         imageView.setActionListener(new XImageView.OnActionListener()
         {
             @Override
@@ -119,17 +118,17 @@ public class MainActivity extends AppCompatActivity
             }
 
             @Override
+            public void onSetImageStart()
+            {
+                toastShort("Start set Image..");
+                progressBar.setVisibility(View.VISIBLE);
+            }
+
+            @Override
             public void onSetImageFinished(boolean success, Rect image)
             {
                 toastShort("OnSetImageFinished: Success : " + success + " Image: " + image);
-                runOnUiThread(new Runnable()
-                {
-                    @Override
-                    public void run()
-                    {
-                        progressBar.setVisibility(View.GONE);
-                    }
-                });
+                progressBar.setVisibility(View.GONE);
             }
         });
     }

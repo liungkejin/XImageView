@@ -130,13 +130,12 @@ public class XImageView extends View
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                interceptParentTouchEvent(true);
+                if (mBitmapManager != null && !mBitmapManager.checkImageNotAvailable()) {
+                    interceptParentTouchEvent(true);
+                }
                 break;
 
             case MotionEvent.ACTION_MOVE:
-                if (mBitmapManager == null) {
-                    interceptParentTouchEvent(false);
-                }
                 break;
 
             case MotionEvent.ACTION_UP:
@@ -351,10 +350,27 @@ public class XImageView extends View
         return (mBitmapManager != null) ? mBitmapManager.getImageRect() : new Rect();
     }
 
+    /**
+     * 判断是否正在设置图片
+     * @return
+     */
+    public boolean isSettingImage()
+    {
+        return (mBitmapManager != null) && mBitmapManager.isSettingImage();
+    }
+
 
     private BitmapManager.IManagerCallback
             mManagerCallback = new BitmapManager.IManagerCallback()
     {
+        @Override
+        public void onSetImageStart()
+        {
+            if (mActionListener != null) {
+                mActionListener.onSetImageStart();
+            }
+        }
+
         @Override
         public void onSetImageFinished(boolean success, Rect image)
         {
@@ -594,6 +610,12 @@ public class XImageView extends View
          * 长按了
          */
         void onLongPressed(MotionEvent event);
+
+        /**
+         * 当开始设置图片时或者当转屏或者view尺寸发生变化时
+         * （即需要重新设置图片时）回调此方法
+         */
+        void onSetImageStart();
 
         /**
          * 初始化完成，图片已经显示
