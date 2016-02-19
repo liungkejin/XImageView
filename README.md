@@ -3,6 +3,7 @@
 XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 拖动，单击，长按等手势操作, 支持惯性滑动, 支持ViewPager
 
 欢迎使用
+
 ![](https://github.com/liungkejin/XImageView/blob/master/images/demo.gif)
 
 这是一张 **21250 x 7500 （1亿6千万像素）像素(121 MB)**, 加载需要30s 左右
@@ -80,7 +81,10 @@ mXImageView.setActionListener(new XImageView.OnActionListener()
      * 当开始设置图片时或者当转屏或者view尺寸发生变化时
      * （即需要重新设置图片时）回调此方法
      */
-    void onSetImageStart();
+    @Override
+    public void onSetImageStart()
+    {
+    }
     
     @Override
     public void onSetImageFinished(boolean success, Rect image)
