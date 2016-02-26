@@ -2,6 +2,7 @@ package cn.kejin.android.views;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -22,6 +23,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
+
+import cn.kejin.android.R;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -56,6 +59,10 @@ public class XImageView extends View
      */
     private BitmapManager mBitmapManager = null;
 
+    /**
+     * 初始化状态时，是否需要适应 view
+     */
+    private boolean mInitFitView = false;
 
     private float mDisplayDensity = 1;
 
@@ -69,25 +76,33 @@ public class XImageView extends View
 
     public XImageView(Context context)
     {
-        super(context);
-        initialize();
+        this(context, null, 0);
+    }
+
+    public XImageView(Context context, boolean initFitView)
+    {
+        this(context, null, 0);
+        mInitFitView = initFitView;
     }
 
     public XImageView(Context context, AttributeSet attrs)
     {
-        super(context, attrs);
-        initialize();
+        this(context, attrs, 0);
     }
 
     public XImageView(Context context, AttributeSet attrs, int defStyleAttr)
     {
         super(context, attrs, defStyleAttr);
-        initialize();
+        initialize(context, attrs);
     }
 
-    private void initialize()
+    private void initialize(Context context, AttributeSet attrs)
     {
-        Context context = getContext();
+        if (attrs != null) {
+            TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.XImageView);
+            mInitFitView = ta.getBoolean(R.styleable.XImageView_initFitView, false);
+            ta.recycle();
+        }
         mDisplayDensity = context.getResources().getDisplayMetrics().density;
         float dpi = mDisplayDensity * 160.0f;
         mPhysicalCoeff = SensorManager.GRAVITY_EARTH  * 39.37f * dpi * 0.84f;
@@ -319,15 +334,6 @@ public class XImageView extends View
     }
 
     /**
-     * 获取当前图片的缩放的倍数
-     * @return 放大的倍数, 相对图片的原始图片的尺寸来说的
-     */
-    public float getScaleFactor()
-    {
-        return (mBitmapManager != null) ? mBitmapManager.getCurScaleFactor() : 0f;
-    }
-
-    /**
      * 滑动图片, 返回当前已经到达的边界
      * LEFT
      * RIGHT
@@ -342,12 +348,31 @@ public class XImageView extends View
         return (mBitmapManager != null) ? mBitmapManager.offsetShowBitmap(dx, dy) : 0;
     }
 
+
     /**
-     * 获取图片的尺寸，注意最好在 onSetImageFinished() 之后获取这个值
+     * 获取当前图片的缩放的倍数
+     * @return 放大的倍数, 相对图片的原始图片的尺寸来说的
      */
-    public Rect getImageRect()
+    public float getScaleFactor()
+    {
+        return (mBitmapManager != null) ? mBitmapManager.getCurScaleFactor() : 0f;
+    }
+
+    /**
+     * 获取真实图片的尺寸，注意最好在 onSetImageFinished() 之后获取这个值
+     */
+    public Rect getRealImageRect()
     {
         return (mBitmapManager != null) ? mBitmapManager.getImageRect() : new Rect();
+    }
+
+    /**
+     * 获取显示出来的图片的尺寸
+     * @return
+     */
+    public Rect getShowImageRect()
+    {
+        return (mBitmapManager != null) ? mBitmapManager.getShowImageRect() : new Rect();
     }
 
     /**
@@ -357,6 +382,14 @@ public class XImageView extends View
     public boolean isSettingImage()
     {
         return (mBitmapManager != null) && mBitmapManager.isSettingImage();
+    }
+
+    /**
+     * 设置 initFitView
+     */
+    public void setInitFitView(boolean fitView)
+    {
+        mInitFitView = fitView;
     }
 
 
@@ -372,9 +405,12 @@ public class XImageView extends View
         }
 
         @Override
-        public void onSetImageFinished(boolean success, Rect image)
+        public void onSetImageFinished(BitmapManager bm, boolean success, Rect image)
         {
-            if (mActionListener != null) {
+            if (bm == mBitmapManager && mActionListener != null) {
+                if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
+                    scaleToMinFitView(image.centerX(), image.centerY(), false, 0);
+                }
                 mActionListener.onSetImageFinished(success, image);
             }
         }
@@ -429,11 +465,14 @@ public class XImageView extends View
                 return false;
             }
 
-            int x = (int) e.getX();
-            int y = (int) e.getY();
-            mBitmapManager.scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
+            boolean enable = true;
             if (mActionListener != null) {
-                mActionListener.onDoubleTapped(e);
+                enable = mActionListener.onDoubleTapped(e);
+            }
+            if (enable) {
+                int x = (int) e.getX();
+                int y = (int) e.getY();
+                mBitmapManager.scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
             }
             return true;
         }
@@ -604,7 +643,7 @@ public class XImageView extends View
         /**
          * 双击了
          */
-        void onDoubleTapped(MotionEvent event);
+        boolean onDoubleTapped(MotionEvent event);
 
         /**
          * 长按了

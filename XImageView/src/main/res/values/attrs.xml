@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="XImageView">
+        <!-- 初始化状态时, 如果图片小于 view 的尺寸，是否需要适应view的尺寸-->
+        <attr name="initFitView" format="boolean"/>
+    </declare-styleable>
+</resources>

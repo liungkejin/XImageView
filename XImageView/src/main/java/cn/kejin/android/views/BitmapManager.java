@@ -128,7 +128,8 @@ public class BitmapManager
     /**
      * 最大和最小可放大的value
      */
-    private float mMaxScaleValue = 3f;
+    public final static float MAX_SCALE_FACTOR = 4f;
+    private float mMaxScaleValue = MAX_SCALE_FACTOR;
     private float mMinScaleValue = 1f;
 
     private final Object mBitmapLock = new Object();
@@ -240,7 +241,7 @@ public class BitmapManager
             @Override
             public void run()
             {
-                mManagerCallback.onSetImageFinished(success, image);
+                mManagerCallback.onSetImageFinished(BitmapManager.this, success, image);
             }
         });
         postInvalidate();
@@ -338,10 +339,10 @@ public class BitmapManager
          * 如果一边 < 对应的view边, 最大放大到 max(3, 最大适应view)， 最小缩小到 min(最小适应view, 1);
          * 如果两边 > 对应的view边, 最大放大到 3, 最小为 最小适应view
          */
-        mMaxScaleValue = 3;
+        mMaxScaleValue = MAX_SCALE_FACTOR;
         mMinScaleValue = getMinFitViewValue();
         if (iw < vw || ih < vh) {
-            mMaxScaleValue = Math.max(3, getMaxFitViewValue());
+            mMaxScaleValue = Math.max(MAX_SCALE_FACTOR, getMaxFitViewValue());
             mMinScaleValue = Math.min(1, mMinScaleValue);
         }
 
@@ -396,6 +397,15 @@ public class BitmapManager
     public Rect getImageRect()
     {
         return mImageRect;
+    }
+
+    /**
+     * 获取显示出来的图片长宽
+     * @return
+     */
+    public Rect getShowImageRect()
+    {
+        return new Rect(0, 0, (int)mShowBitmapRect.width(), (int)mShowBitmapRect.height());
     }
 
     /**
@@ -1592,6 +1602,6 @@ public class BitmapManager
     public interface IManagerCallback
     {
         void onSetImageStart();
-        void onSetImageFinished(boolean success, Rect image);
+        void onSetImageFinished(BitmapManager bm, boolean success, Rect image);
     }
 }

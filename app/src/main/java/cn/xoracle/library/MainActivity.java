@@ -102,32 +102,33 @@ public class MainActivity extends AppCompatActivity
             @Override
             public void onSingleTapped(MotionEvent event, boolean onImage)
             {
-                toastShort("X: " + event.getX() + "  Y: " + event.getY() + " TapOnImage: " + onImage);
+//                toastShort("X: " + event.getX() + "  Y: " + event.getY() + " TapOnImage: " + onImage);
             }
 
             @Override
-            public void onDoubleTapped(MotionEvent event)
+            public boolean onDoubleTapped(MotionEvent event)
             {
-                toastShort("Double Tapped: " + event.getX() + ", " + event.getY());
+//                toastShort("Double Tapped: " + event.getX() + ", " + event.getY());
+                return true;
             }
 
             @Override
             public void onLongPressed(MotionEvent event)
             {
-                toastShort("onLongPressed..." + event.getX() + ", " + event.getY());
+//                toastShort("onLongPressed..." + event.getX() + ", " + event.getY());
             }
 
             @Override
             public void onSetImageStart()
             {
-                toastShort("Start set Image..");
+//                toastShort("Start set Image..");
                 progressBar.setVisibility(View.VISIBLE);
             }
 
             @Override
             public void onSetImageFinished(boolean success, Rect image)
             {
-                toastShort("OnSetImageFinished: Success : " + success + " Image: " + image);
+//                toastShort("OnSetImageFinished: Success : " + success + " Image: " + image);
                 progressBar.setVisibility(View.GONE);
             }
         });

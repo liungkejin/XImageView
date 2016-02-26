@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent">
+             android:layout_width="match_parent"
+             android:layout_height="match_parent"
+             xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <cn.kejin.android.views.XImageView
         android:id="@+id/xImageView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        app:initFitView="true"
         android:background="@android:color/background_dark"/>
 
     <ProgressBar
