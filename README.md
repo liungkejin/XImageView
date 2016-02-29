@@ -104,4 +104,6 @@ mXImageView.setActionListener(new XImageView.OnActionListener()
         // 当设置图片完成之后，回调回来，并带回图片的尺寸
     }
 });
+
+// 如果不想监听这么多, 可以使用 XImageView.SimpleActionListener
 ```

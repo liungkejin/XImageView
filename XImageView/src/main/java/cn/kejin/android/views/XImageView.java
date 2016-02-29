@@ -663,6 +663,40 @@ public class XImageView extends View
         void onSetImageFinished(boolean success, Rect image);
     }
 
+    public static class SimpleActionListener implements OnActionListener
+    {
+
+        @Override
+        public void onSingleTapped(MotionEvent event, boolean onImage)
+        {
+
+        }
+
+        @Override
+        public boolean onDoubleTapped(MotionEvent event)
+        {
+            return true;
+        }
+
+        @Override
+        public void onLongPressed(MotionEvent event)
+        {
+
+        }
+
+        @Override
+        public void onSetImageStart()
+        {
+
+        }
+
+        @Override
+        public void onSetImageFinished(boolean success, Rect image)
+        {
+
+        }
+    }
+
 
     private int dpToPx(float dp)
     {
