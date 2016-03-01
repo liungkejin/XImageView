@@ -1,5 +1,6 @@
 package cn.xoracle.library;
 
+import android.content.Intent;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Environment;
@@ -85,6 +86,7 @@ public class MainActivity extends AppCompatActivity
                     break;
 
                 case 4:
+                    imageView.setDoubleTapScaleType(XImageView.TYPE_FIT.FIT_IMAGE);
                     imageView.setImage(getAssets().open("d.jpg"));
                     break;
 
@@ -100,33 +102,34 @@ public class MainActivity extends AppCompatActivity
         imageView.setActionListener(new XImageView.OnActionListener()
         {
             @Override
-            public void onSingleTapped(MotionEvent event, boolean onImage)
+            public void onSingleTapped(XImageView view, MotionEvent event, boolean onImage)
             {
 //                toastShort("X: " + event.getX() + "  Y: " + event.getY() + " TapOnImage: " + onImage);
             }
 
             @Override
-            public boolean onDoubleTapped(MotionEvent event)
+            public boolean onDoubleTapped(XImageView view, MotionEvent event)
             {
 //                toastShort("Double Tapped: " + event.getX() + ", " + event.getY());
-                return true;
+                return false;
             }
 
             @Override
-            public void onLongPressed(MotionEvent event)
+            public void onLongPressed(XImageView view, MotionEvent event)
             {
 //                toastShort("onLongPressed..." + event.getX() + ", " + event.getY());
+                startActivity(new Intent(getApplicationContext(), ImageActivity.class));
             }
 
             @Override
-            public void onSetImageStart()
+            public void onSetImageStart(XImageView view)
             {
 //                toastShort("Start set Image..");
                 progressBar.setVisibility(View.VISIBLE);
             }
 
             @Override
-            public void onSetImageFinished(boolean success, Rect image)
+            public void onSetImageFinished(XImageView view, boolean success, Rect image)
             {
 //                toastShort("OnSetImageFinished: Success : " + success + " Image: " + image);
                 progressBar.setVisibility(View.GONE);

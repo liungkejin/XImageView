@@ -33,7 +33,6 @@ import cn.kejin.android.R;
 
 /**
  * 能显示大长图
- * TODO: 解决ViewPager的冲突, 重写自己的ViewPager
  */
 public class XImageView extends View
 {
@@ -63,6 +62,25 @@ public class XImageView extends View
      * 初始化状态时，是否需要适应 view
      */
     private boolean mInitFitView = false;
+
+    /**
+     * 双击放大的方式
+     *
+     * 当图片的最大放大尺寸都小于 view 的尺寸时， 强制为 fitImage
+     * fitView: 不管图片的尺寸多少， 双击缩放总是放大到 最大适应view 或者 缩小到 最小适应view
+     * fitImage: 双击缩放的时候为 放大到 Min(最大适应view, 最大放大尺寸) 或者 缩小到 Min(最小适应view, 图片的尺寸)
+     */
+    public enum TYPE_FIT
+    {
+        FIT_VIEW (0),
+        FIT_IMAGE (1);
+
+        final int mType;
+        TYPE_FIT(int t) { mType = t; }
+    }
+
+    private TYPE_FIT mDoubleTapScaleType = TYPE_FIT.FIT_VIEW;
+
 
     private float mDisplayDensity = 1;
 
@@ -101,6 +119,9 @@ public class XImageView extends View
         if (attrs != null) {
             TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.XImageView);
             mInitFitView = ta.getBoolean(R.styleable.XImageView_initFitView, false);
+            int type = ta.getInt(R.styleable.XImageView_doubleTapScaleType, TYPE_FIT.FIT_VIEW.mType);
+            mDoubleTapScaleType = (type == 0) ? TYPE_FIT.FIT_VIEW : TYPE_FIT.FIT_IMAGE;
+
             ta.recycle();
         }
         mDisplayDensity = context.getResources().getDisplayMetrics().density;
@@ -392,6 +413,13 @@ public class XImageView extends View
         mInitFitView = fitView;
     }
 
+    /**
+     * 设置双击缩放的缩放方式, 默认为 fitView
+     */
+    public void setDoubleTapScaleType(TYPE_FIT type)
+    {
+        mDoubleTapScaleType = (type == null) ? TYPE_FIT.FIT_VIEW : type;
+    }
 
     private BitmapManager.IManagerCallback
             mManagerCallback = new BitmapManager.IManagerCallback()
@@ -400,7 +428,7 @@ public class XImageView extends View
         public void onSetImageStart()
         {
             if (mActionListener != null) {
-                mActionListener.onSetImageStart();
+                mActionListener.onSetImageStart(XImageView.this);
             }
         }
 
@@ -411,7 +439,7 @@ public class XImageView extends View
                 if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
                     scaleToMinFitView(image.centerX(), image.centerY(), false, 0);
                 }
-                mActionListener.onSetImageFinished(success, image);
+                mActionListener.onSetImageFinished(XImageView.this, success, image);
             }
         }
     };
@@ -453,7 +481,7 @@ public class XImageView extends View
             int y = (int) e.getY();
 //            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y + " Is: " + (mBitmapManager != null && mBitmapManager.isTapOnImage(x, y)));
             if (mActionListener != null) {
-                mActionListener.onSingleTapped(e, mBitmapManager != null && mBitmapManager.isTapOnImage(x, y));
+                mActionListener.onSingleTapped(XImageView.this, e, mBitmapManager != null && mBitmapManager.isTapOnImage(x, y));
             }
             return true;
         }
@@ -465,14 +493,14 @@ public class XImageView extends View
                 return false;
             }
 
-            boolean enable = true;
+            boolean handled = false;
             if (mActionListener != null) {
-                enable = mActionListener.onDoubleTapped(e);
+                handled = mActionListener.onDoubleTapped(XImageView.this, e);
             }
-            if (enable) {
+            if (!handled) {
                 int x = (int) e.getX();
                 int y = (int) e.getY();
-                mBitmapManager.scaleToFitView(x, y, true, DOUBLE_SCALE_TIME);
+                mBitmapManager.scaleToFitView(mDoubleTapScaleType, x, y, true, DOUBLE_SCALE_TIME);
             }
             return true;
         }
@@ -481,7 +509,7 @@ public class XImageView extends View
         public void onLongPress(MotionEvent e)
         {
             if (mActionListener != null) {
-                mActionListener.onLongPressed(e);
+                mActionListener.onLongPressed(XImageView.this, e);
             }
         }
 
@@ -638,60 +666,59 @@ public class XImageView extends View
          * 在View上点击了一次（而且没有双击）
          * @param onImage 是否点击在了有效的图片上
          */
-        void onSingleTapped(MotionEvent event, boolean onImage);
+        void onSingleTapped(XImageView view, MotionEvent event, boolean onImage);
 
         /**
          * 双击了
          */
-        boolean onDoubleTapped(MotionEvent event);
+        boolean onDoubleTapped(XImageView view, MotionEvent event);
 
         /**
          * 长按了
          */
-        void onLongPressed(MotionEvent event);
+        void onLongPressed(XImageView view, MotionEvent event);
 
         /**
          * 当开始设置图片时或者当转屏或者view尺寸发生变化时
          * （即需要重新设置图片时）回调此方法
          */
-        void onSetImageStart();
+        void onSetImageStart(XImageView view);
 
         /**
          * 初始化完成，图片已经显示
          * 返回是否成功，并返回图片的尺寸
          */
-        void onSetImageFinished(boolean success, Rect image);
+        void onSetImageFinished(XImageView view, boolean success, Rect image);
     }
 
     public static class SimpleActionListener implements OnActionListener
     {
-
         @Override
-        public void onSingleTapped(MotionEvent event, boolean onImage)
+        public void onSingleTapped(XImageView view, MotionEvent event, boolean onImage)
         {
 
         }
 
         @Override
-        public boolean onDoubleTapped(MotionEvent event)
+        public boolean onDoubleTapped(XImageView view, MotionEvent event)
         {
-            return true;
+            return false;
         }
 
         @Override
-        public void onLongPressed(MotionEvent event)
-        {
-
-        }
-
-        @Override
-        public void onSetImageStart()
+        public void onLongPressed(XImageView view, MotionEvent event)
         {
 
         }
 
         @Override
-        public void onSetImageFinished(boolean success, Rect image)
+        public void onSetImageStart(XImageView view)
+        {
+
+        }
+
+        @Override
+        public void onSetImageFinished(XImageView view, boolean success, Rect image)
         {
 
         }

@@ -17,7 +17,6 @@ import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
-import android.view.animation.LinearInterpolator;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -188,10 +187,13 @@ public class BitmapManager
      */
     public void onDestroy()
     {
+        long stime = System.currentTimeMillis();
         mLoadingThread.quit();
         mCacheFile.delete(); // 删除临时文件
         recycleAll();
         postInvalidate();
+
+        Log.e(TAG, "Summary Time: " + (System.currentTimeMillis() - stime));
     }
 
     public void invalidate()
@@ -215,7 +217,7 @@ public class BitmapManager
      */
     private void startInitImageThumb()
     {
-        mImageView.post(new Runnable()
+        mMainHandler.post(new Runnable()
         {
             @Override
             public void run()
@@ -283,7 +285,7 @@ public class BitmapManager
             mSrcBitmap = bitmap;
             mImageRect.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
 
-            startInitImageThumb();
+            updateViewRect(mImageView.getWidth(), mImageView.getHeight());
         }
     }
 
@@ -310,11 +312,13 @@ public class BitmapManager
                 catch (IOException e) {
                     e.printStackTrace();
                     mDecoder = null;
-                    onSetImageFinished(false);
                 }
 
                 if (mDecoder != null) {
                     startInitImageThumb();
+                }
+                else {
+                    onSetImageFinished(false);
                 }
             }
         });
@@ -336,15 +340,15 @@ public class BitmapManager
 
         /**
          * 计算最大和最小缩放值
-         * 如果一边 < 对应的view边, 最大放大到 max(3, 最大适应view)， 最小缩小到 min(最小适应view, 1);
-         * 如果两边 > 对应的view边, 最大放大到 3, 最小为 最小适应view
+         * 如果一边 < 对应的view边, 最大放大到 max(4, 最大适应view)， 最小缩小到 min(最小适应view, 1);
+         * 如果两边 > 对应的view边, 最大放大到 4, 最小为 最小适应view
          */
-        mMaxScaleValue = MAX_SCALE_FACTOR;
-        mMinScaleValue = getMinFitViewValue();
-        if (iw < vw || ih < vh) {
-            mMaxScaleValue = Math.max(MAX_SCALE_FACTOR, getMaxFitViewValue());
-            mMinScaleValue = Math.min(1, mMinScaleValue);
-        }
+        mMaxScaleValue = Math.max(MAX_SCALE_FACTOR, getMaxFitViewValue());
+        mMinScaleValue = Math.min(1, getMinFitViewValue());
+//        if (iw < vw || ih < vh) {
+//            mMaxScaleValue = Math.max(MAX_SCALE_FACTOR, getMaxFitViewValue());
+//            mMinScaleValue = Math.min(1, mMinScaleValue);
+//        }
 
         mViewRect.set(0, 0, vw, vh);
         /**
@@ -401,7 +405,6 @@ public class BitmapManager
 
     /**
      * 获取显示出来的图片长宽
-     * @return
      */
     public Rect getShowImageRect()
     {
@@ -663,16 +666,21 @@ public class BitmapManager
      * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
      * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
      */
-    public void scaleToFitView(int cx, int cy, boolean smooth, long smoothTime)
+    public void scaleToFitView(XImageView.TYPE_FIT type, int cx, int cy, boolean smooth, long smoothTime)
     {
+        if (mValueAnimator != null && mValueAnimator.isRunning()) {
+            return;
+        }
+
         if (checkImageNotAvailable() && isRectValid(mShowBitmapRect)) {
             return;
         }
 
-        float destScale;
+        if (type == null) {
+            type = XImageView.TYPE_FIT.FIT_VIEW;
+        }
 
-        float ws = mViewRect.width() * 1f / mShowBitmapRect.width();
-        float hs = mViewRect.height() * 1f / mShowBitmapRect.height();
+        float destScale;
 
         float sw = mShowBitmapRect.width();
         float sh = mShowBitmapRect.height();
@@ -680,36 +688,35 @@ public class BitmapManager
         int tw = mThumbShowBitmapRect.width();
         int th = mThumbShowBitmapRect.height();
 
-        /**
-         * 如果和小图差不多大小
-         */
-        if ((Math.abs(sw - tw) < 5 && Math.abs(sh - th) < 5)) {
-            if (mViewBitmapRect.contains(mImageRect)) {
-                /**
-                 * 如果真实图片就小于视图， 则放大到最小适应屏幕
-                 */
-                destScale = Math.min(ws, hs);
+        float maxFitScale = getMaxFitViewScaleFactor();
+        float minFitScale = getMinFitViewScaleFactor();
+
+        if (type == XImageView.TYPE_FIT.FIT_VIEW) {
+            /**
+             * 如果是最小适应 view
+             */
+            if (sw < mViewRect.width() + 5f && sh < mViewRect.height() + 5f) {
+                destScale = maxFitScale;
             }
             else {
-                /**
-                 * 放大到最大适应屏幕
-                 */
-                destScale = Math.max(ws, hs);
+                destScale = minFitScale;
             }
         }
         else {
             /**
-             * 缩小到最小图片
+             * 如果和小图差不多大小
              */
-            if (mViewBitmapRect.contains(mImageRect)) {
-                ws = mImageRect.width() * 1f / mShowBitmapRect.width();
-                hs = mImageRect.height() * 1f/ mShowBitmapRect.height();
-                destScale = Math.min(ws, hs);
+            if ((Math.abs(sw - tw) < 5 && Math.abs(sh - th) < 5)) {
+                destScale = maxFitScale;
             }
             else {
-                destScale = Math.min(ws, hs);
+                float ws = mImageRect.width() * 1f / mShowBitmapRect.width();
+                float hs = mImageRect.height() * 1f/ mShowBitmapRect.height();
+
+                destScale = Math.min(minFitScale, Math.min(ws, hs));
             }
         }
+
 //        Log.e(TAG, "Dest Scale: " + destScale);
 
         scaleTo(cx, cy, destScale, smooth, smoothTime);

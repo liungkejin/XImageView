@@ -21,7 +21,8 @@ XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 
 	android:id="@+id/xImageView"
 	android:layout_height="match_parent"
 	android:layout_width="match_parent"
-	app:initFitView="true"/>
+	app:initFitView="true"
+	app:doubleTapScaleType="fitView"/>
 <!-- initFitView 属性是当图片小于 view的尺寸时，是否需要在初始化时使用view的尺寸 -->
 ```
 
@@ -35,10 +36,28 @@ catch (IOException e) {
 ```
 
 ## Details
+
+| 属性 | 值 | 说明 |
+| --- | --- | --- |
+| `initFitView` | `true`, `false` | 当图片的尺寸小于 view 的尺寸, 是否需要在初始化时, 填充满view的高或宽 |
+| `doubleTapScaleType` | `fitView`, `fitImage` | 当图片的尺寸小于 view 的尺寸, 在双击缩小时`fitView`总是将图片缩小至 最小适应view, `fitImage` 则会缩小至图片本身的尺寸 |
+
+- 最小适应view:
+```
+(ImageHeight == ViewHeight && ImageWidth <= ViewWidth) ||
+(ImageHeight <= ViewHeight && ImageWidth == ViewWidth)
+```
+
+- 最大适应view:
+```
+(ImageHeight == ViewHeight && ImageWidth > ViewWidth) ||
+(ImageHeight > ViewHeight && ImageWidth == ViewWidth)
+```
+
 XImageView 支持使用`FilePath, File, InputStream, Bitmap` 来设置图片, `FilePath, File` 会转换为 `InputStream`,
 在使用 Bitmap 设置图片时，要注意内存的消耗(因为内部会使用一个副本),
-可以使用 `setImage(bitmap, cache)`， 这个方法会把 Bitmap 转换为InputStream，再设置图片,
-不过这样会比较耗时！
+可以使用 `setImage(bitmap, cache)`， 这个方法会把 Bitmap 转换为InputStream，再设置图片,不过这样会比较耗时！
+
 ```java
 void setImage(Bitmap bitmap)
 void setImage(Bitmap bitmap, boolean cache);
@@ -74,34 +93,29 @@ void setImage(InputStream is, Bitmap.Config config);
 mXImageView.setActionListener(new XImageView.OnActionListener()
 {
     @Override
-    public void onSingleTapped(MotionEvent event, boolean onImage)
+    public void onSingleTapped(XImageView view, MotionEvent event, boolean onImage)
     {
-        // 单击事件
     }
 
     @Override
-    public boolean onDoubleTapped(MotionEvent event)
+    public boolean onDoubleTapped(XImageView view, MotionEvent event)
     {
-        // 双击事件
-		return true; // 返回 false 不执行缩放动作
+        return false; // 返回 true 表示已经处理了双击事件， 不会进行缩放操作
     }
 
     @Override
-    public void onLongPressed(MotionEvent event)
+    public void onLongPressed(XImageView view, MotionEvent event)
     {
-        // 长按事件
     }
 
     @Override
-    public void onSetImageStart()
+    public void onSetImageStart(XImageView view)
     {
-		// 当开始设置图片时或者当转屏或者view尺寸发生变化时 （即需要重新设置图片时）回调此方法
     }
 
     @Override
-    public void onSetImageFinished(boolean success, Rect image)
+    public void onSetImageFinished(XImageView view, boolean success, Rect image)
     {
-        // 当设置图片完成之后，回调回来，并带回图片的尺寸
     }
 });
 
