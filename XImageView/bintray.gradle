@@ -1,6 +1,6 @@
-group = lib_package
-version = lib_version
-project.archivesBaseName = lib_name
+group = PROJ_GROUP
+version = PROJ_VERSION
+project.archivesBaseName = PROJ_ARTIFACTID
 
 apply plugin: 'com.jfrog.bintray'
 apply plugin: "com.jfrog.artifactory"
@@ -29,7 +29,7 @@ javadoc {
         author true
         version true
         links "http://docs.oracle.com/javase/7/docs/api"
-        title "$lib_name $lib_version"
+        title "$PROJ_NAME $PROJ_VERSION"
     }
 }
 
@@ -44,9 +44,9 @@ def pomConfig = {
     }
     developers {
         developer {
-            id author_id
-            name author_name
-            email author_email
+            id DEVELOPER_ID
+            name DEVELOPER_NAME
+            email DEVELOPER_EMAIL
         }
     }
 }
@@ -54,13 +54,13 @@ def pomConfig = {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            artifactId lib_package
+            artifactId PROJ_ARTIFACTID
             artifact javadocJar
             artifact sourcesJar
 
             pom.withXml {
                 def root = asNode()
-                root.appendNode('description', lib_description)
+                root.appendNode('description', PROJ_DESCRIPTION)
                 root.children().last() + pomConfig
 
                 def dependenciesNode = root.appendNode('dependencies')
@@ -92,12 +92,12 @@ bintray {
 
     pkg {
         repo = 'maven'
-        name = lib_name
-        desc = lib_description
-        websiteUrl = lib_site
-        issueTrackerUrl = lib_issue_site
-        vcsUrl = lib_git
-        licenses = [lib_license]
+        name = PROJ_NAME
+        desc = PROJ_DESCRIPTION
+        websiteUrl = PROJ_WEBSITEURL
+        issueTrackerUrl = PROJ_ISSUETRACKERURL
+        vcsUrl = PROJ_VCSURL
+        licenses = ['Apache-2.0']
         publicDownloadNumbers = true
     }
 }
@@ -110,7 +110,6 @@ artifactory {
         }
     }
     publish {
-
         repository {
             repoKey = 'oss-snapshot-local' //The Artifactory repository key to publish to
             username = bintray.user
