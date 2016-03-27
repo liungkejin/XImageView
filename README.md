@@ -8,13 +8,18 @@ XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 
 
 这是一张 **21250 x 7500 （1亿6千万像素）像素(121 MB)**, 加载需要30s 左右
 
-<img src="https://github.com/liungkejin/XImageView/blob/master/images/S60130-003746.jpg" width=400/>
+<img src="https://github.com/liungkejin/XImageView/blob/master/images/S60130-003746.jpg" width=200/>
 
 
 **这里可以下载这些大图 http://pan.baidu.com/s/1mhw6Qko**
 
 
 ## Usage
+```gradle
+dependencies {
+    compile 'cn.kejin.android.views:XImageView:1.0.0'
+}
+```
 
 ```xml
 <cn.kejin.android.views.XImageView
