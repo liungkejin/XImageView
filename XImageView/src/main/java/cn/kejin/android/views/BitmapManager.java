@@ -187,13 +187,13 @@ public class BitmapManager
      */
     public void onDestroy()
     {
-        long stime = System.currentTimeMillis();
+//        long stime = System.currentTimeMillis();
         mLoadingThread.quit();
         mCacheFile.delete(); // 删除临时文件
         recycleAll();
         postInvalidate();
 
-        Log.e(TAG, "Summary Time: " + (System.currentTimeMillis() - stime));
+//        Log.e(TAG, "Summary Time: " + (System.currentTimeMillis() - stime));
     }
 
     public void invalidate()
@@ -397,6 +397,7 @@ public class BitmapManager
 
     /**
      * 获取ImageRect
+     * @return Rect
      */
     public Rect getImageRect()
     {
@@ -405,6 +406,7 @@ public class BitmapManager
 
     /**
      * 获取显示出来的图片长宽
+     * @return Rect
      */
     public Rect getShowImageRect()
     {
@@ -602,6 +604,9 @@ public class BitmapManager
 
     /**
      * 以中心点缩放
+     * @param dest 目标缩放大小
+     * @param smooth 是否动画
+     * @param smoothTime 动画时间
      */
     public void scaleFromCenterTo(float dest, boolean smooth, long smoothTime)
     {
@@ -610,6 +615,10 @@ public class BitmapManager
 
     /**
      * 缩放到最大适应屏幕
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param smooth 是否动画
+     * @param smoothTime 动画时间
      */
     public void scaleToMaxFitView(int cx, int cy, boolean smooth, long smoothTime)
     {
@@ -618,6 +627,10 @@ public class BitmapManager
 
     /**
      * 缩放到最小适应屏幕
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param smooth 是否动画
+     * @param smoothTime 动画时间
      */
     public void scaleToMinFitView(int cx, int cy, boolean smooth, long smoothTime)
     {
@@ -648,6 +661,7 @@ public class BitmapManager
 
     /**
      * 获取当前的缩放倍数, 相对原图的尺寸
+     * @return float
      */
     public float getCurScaleFactor()
     {
@@ -665,6 +679,11 @@ public class BitmapManager
      *
      * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
      * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
+     * @param type 适应类型
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param smooth 是否动画
+     * @param smoothTime 动画时间
      */
     public void scaleToFitView(XImageView.TYPE_FIT type, int cx, int cy, boolean smooth, long smoothTime)
     {
@@ -722,11 +741,16 @@ public class BitmapManager
         scaleTo(cx, cy, destScale, smooth, smoothTime);
     }
 
+    private float mLastAnimatedValue = 1f;
+
     /**
      * 缩放到指定的大小
-     * TODO: 兼容 API 10, 使用Handler
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param dest 目标缩放倍数
+     * @param smooth 是否动画
+     * @param smoothTime 动画时间
      */
-    private float mLastAnimatedValue = 1f;
     public void scaleTo(final int cx, final int cy,
                          float dest, boolean smooth, long smoothTime)
     {
@@ -874,6 +898,7 @@ public class BitmapManager
 
     /**
      * 检查当前整个BitmapManager 是否有效
+     * @return boolean
      */
     public boolean checkImageNotAvailable()
     {
@@ -884,6 +909,8 @@ public class BitmapManager
     /**
      * 画可见区域的的Bitmap
      * @param canvas 画布
+     * @param width 宽
+     * @param height 高
      * @return boolean (true 表示画图片成功, false 表示正在处理图片， 没有真正画出)
      */
     public boolean drawVisibleBitmap(@NonNull Canvas canvas, int width, int height)
@@ -1009,6 +1036,9 @@ public class BitmapManager
 
     /**
      * 检测是否这个点在图片上
+     * @param x 坐标x
+     * @param y 坐标Y
+     * @return boolean
      */
     public boolean isTapOnImage(int x, int y)
     {
@@ -1017,6 +1047,7 @@ public class BitmapManager
 
     /**
      * 检查是否正在设置图片
+     * @return boolean
      */
     public boolean isSettingImage()
     {

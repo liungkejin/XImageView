@@ -10,7 +10,6 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.hardware.SensorManager;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
@@ -24,7 +23,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 
-import cn.kejin.android.R;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -301,7 +299,7 @@ public class XImageView extends View
 
     /**
      * 设置监听
-     * @param listener
+     * @param listener action listener
      */
     public void setActionListener(OnActionListener listener)
     {
@@ -311,6 +309,9 @@ public class XImageView extends View
     /**
      * 缩放到指定的大小, 起始是以当前的大小为准
      * 并且以屏幕中心进行缩放
+     * @param dest 目标缩放大小
+     * @param smooth  是否动画
+     * @param smoothTime 动画时间
      */
     public void scaleImage(float dest, boolean smooth, int smoothTime)
     {
@@ -335,7 +336,11 @@ public class XImageView extends View
     }
 
     /**
-     * 放大到最大适应View（就是图片宽高 >= View的宽高）
+     * 放大到最大适应View（就是图片宽高 &gt;= View的宽高）
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param smooth 是否动画
+     * @param smoothTime 动画时间
      */
     public void scaleToMaxFitView(int cx, int cy, boolean smooth, int smoothTime)
     {
@@ -345,7 +350,11 @@ public class XImageView extends View
     }
 
     /**
-     * 放大到最小适应View (就是图片宽高 <= View的宽高)
+     * 放大到最小适应View (就是图片宽高 &lt;= View的宽高)
+     * @param cx 中心点
+     * @param cy 中心点
+     * @param smooth 动画
+     * @param smoothTime 动画时间
      */
     public void scaleToMinFitView(int cx, int cy, boolean smooth, int smoothTime)
     {
@@ -381,6 +390,7 @@ public class XImageView extends View
 
     /**
      * 获取真实图片的尺寸，注意最好在 onSetImageFinished() 之后获取这个值
+     * @return Rect
      */
     public Rect getRealImageRect()
     {
@@ -389,7 +399,7 @@ public class XImageView extends View
 
     /**
      * 获取显示出来的图片的尺寸
-     * @return
+     * @return Rect
      */
     public Rect getShowImageRect()
     {
@@ -398,7 +408,7 @@ public class XImageView extends View
 
     /**
      * 判断是否正在设置图片
-     * @return
+     * @return Rect
      */
     public boolean isSettingImage()
     {
@@ -407,6 +417,7 @@ public class XImageView extends View
 
     /**
      * 设置 initFitView
+     * @param fitView fit view
      */
     public void setInitFitView(boolean fitView)
     {
@@ -415,6 +426,7 @@ public class XImageView extends View
 
     /**
      * 设置双击缩放的缩放方式, 默认为 fitView
+     * @param type fit type
      */
     public void setDoubleTapScaleType(TYPE_FIT type)
     {
@@ -664,29 +676,40 @@ public class XImageView extends View
     {
         /**
          * 在View上点击了一次（而且没有双击）
+         * @param view XImageView
+         * @param event motion event
          * @param onImage 是否点击在了有效的图片上
          */
         void onSingleTapped(XImageView view, MotionEvent event, boolean onImage);
 
         /**
-         * 双击了
+         * 双击
+         * @param view XImageView
+         * @param event motion event
+         * @return boolean 是否已经进行了处理
          */
         boolean onDoubleTapped(XImageView view, MotionEvent event);
 
         /**
-         * 长按了
+         * 长按
+         * @param view XImageView
+         * @param event motion event
          */
         void onLongPressed(XImageView view, MotionEvent event);
 
         /**
          * 当开始设置图片时或者当转屏或者view尺寸发生变化时
          * （即需要重新设置图片时）回调此方法
+         * @param view XImageView
          */
         void onSetImageStart(XImageView view);
 
         /**
          * 初始化完成，图片已经显示
          * 返回是否成功，并返回图片的尺寸
+         * @param view XImageView
+         * @param success 是否设置成功
+         * @param image 图片的实际大小
          */
         void onSetImageFinished(XImageView view, boolean success, Rect image);
     }
