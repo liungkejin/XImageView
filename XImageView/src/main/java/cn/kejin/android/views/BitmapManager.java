@@ -145,22 +145,41 @@ public class BitmapManager
      */
     private boolean mIsSettingImage = true;
 
-    public BitmapManager(View view,
-                         Bitmap bitmap,
-                         boolean cache,
-                         @NonNull IManagerCallback callback)
-    {
-        initialize(view, callback);
-        setSrcBitmap(bitmap, cache);
+    private boolean mInitFitView = false;
+    public void setInitFitView(boolean init) {
+        mInitFitView = init;
     }
 
-    public BitmapManager(View view,
-                         InputStream is,
-                         Bitmap.Config config,
-                         @NonNull IManagerCallback callback)
+    public BitmapManager(final View view,
+                         final Bitmap bitmap,
+                         final boolean cache,
+                         @NonNull final IManagerCallback callback)
     {
-        initialize(view, callback);
-        setBitmapDecoder(is, config);
+        view.post(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                initialize(view, callback);
+                setSrcBitmap(bitmap, cache);
+            }
+        });
+    }
+
+    public BitmapManager(final View view,
+                         final InputStream is,
+                         final Bitmap.Config config,
+                         @NonNull final IManagerCallback callback)
+    {
+        view.post(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                initialize(view, callback);
+                setBitmapDecoder(is, config);
+            }
+        });
     }
 
     /**
@@ -196,10 +215,10 @@ public class BitmapManager
 //        Log.e(TAG, "Summary Time: " + (System.currentTimeMillis() - stime));
     }
 
-    public void invalidate()
-    {
-        mImageView.invalidate();
-    }
+//    public void invalidate()
+//    {
+//        mImageView.invalidate();
+//    }
 
     public void postInvalidate()
     {
@@ -236,6 +255,10 @@ public class BitmapManager
         if (success) {
             mIsSettingImage = false;
             image.set(mImageRect);
+
+            if (mInitFitView && mViewRect.contains(mImageRect)) {
+                scaleToMinFitView(mViewRect.centerX(), mViewRect.centerY(), false, 0);
+            }
         }
 
         mMainHandler.post(new Runnable()
@@ -335,6 +358,7 @@ public class BitmapManager
         int ih = mImageRect.height();
 
         if (vw * vh * iw * ih == 0) {
+            onSetImageFinished(false);
             return;
         }
 
@@ -479,7 +503,7 @@ public class BitmapManager
         }
 
         mViewBitmapRect.offset(-(rx == Integer.MAX_VALUE ? 0 : rx), -(ry == Integer.MAX_VALUE ? 0 : ry));
-        invalidate();
+        postInvalidate();
 
         Rect detectRect = new Rect(mViewBitmapRect);
         int result = NONE;
@@ -599,7 +623,7 @@ public class BitmapManager
 
 //        Log.e(TAG, "=====================================================================");
 
-        invalidate();
+        postInvalidate();
     }
 
     /**
@@ -1029,7 +1053,7 @@ public class BitmapManager
             return;
         }
         mSampleSize = sampleSize;
-        invalidate();
+        postInvalidate();
 
 //        Log.e(TAG, "Current Sample Size: " + mSampleSize);
     }

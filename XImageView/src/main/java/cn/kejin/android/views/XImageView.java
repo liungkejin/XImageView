@@ -240,6 +240,7 @@ public class XImageView extends View
         }
 
         mBitmapManager = new BitmapManager(this, bitmap, cache, mManagerCallback);
+        mBitmapManager.setInitFitView(mInitFitView);
     }
 
 
@@ -295,6 +296,7 @@ public class XImageView extends View
         }
 
         mBitmapManager = new BitmapManager(this, is, config, mManagerCallback);
+        mBitmapManager.setInitFitView(mInitFitView);
     }
 
     /**
@@ -422,6 +424,9 @@ public class XImageView extends View
     public void setInitFitView(boolean fitView)
     {
         mInitFitView = fitView;
+        if (mBitmapManager != null) {
+            mBitmapManager.setInitFitView(mInitFitView);
+        }
     }
 
     /**
@@ -447,11 +452,13 @@ public class XImageView extends View
         @Override
         public void onSetImageFinished(BitmapManager bm, boolean success, Rect image)
         {
-            if (bm == mBitmapManager && mActionListener != null) {
-                if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
-                    scaleToMinFitView(image.centerX(), image.centerY(), false, 0);
+            if (bm == mBitmapManager) {
+//                if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
+//                    scaleToMinFitView(image.centerX(), image.centerY(), false, 0);
+//                }
+                if (mActionListener != null) {
+                    mActionListener.onSetImageFinished(XImageView.this, success, image);
                 }
-                mActionListener.onSetImageFinished(XImageView.this, success, image);
             }
         }
     };
