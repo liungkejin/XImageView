@@ -34,4 +34,4 @@ buildscript {
     }
 }
 
-apply from: 'bintray.gradle'
+apply from: 'java-bintray.gradle'
