@@ -4,7 +4,6 @@ project.archivesBaseName = PROJ_ARTIFACTID
 
 apply plugin: 'com.jfrog.bintray'
 apply plugin: "com.jfrog.artifactory"
-apply plugin: 'maven-publish'
 
 task sourcesJar(type: Jar) {
     from android.sourceSets.main.java.srcDirs
@@ -51,6 +50,7 @@ def pomConfig = {
     }
 }
 
+apply plugin: 'maven-publish'
 publishing {
     publications {
         mavenJava(MavenPublication) {

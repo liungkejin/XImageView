@@ -23,6 +23,7 @@ dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:23.0.1'
-    compile 'cn.kejin.android.views:XImageView:1.0.0'
+//    compile 'cn.kejin.android.views:XImageView:1.0.0'
     compile 'com.nostra13.universalimageloader:universal-image-loader:1.9.5'
+    compile project(':XImageView')
 }

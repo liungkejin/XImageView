@@ -1,4 +1,4 @@
-package cn.kejin.android.views;
+package cn.kejin.ximageview;
 
 import android.animation.Animator;
 import android.animation.ObjectAnimator;

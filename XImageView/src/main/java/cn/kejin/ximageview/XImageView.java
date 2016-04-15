@@ -1,4 +1,4 @@
-package cn.kejin.android.views;
+package cn.kejin.ximageview;
 
 import android.animation.ValueAnimator;
 import android.content.Context;

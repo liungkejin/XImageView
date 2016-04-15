@@ -15,7 +15,7 @@ import android.widget.Toast;
 
 import java.io.File;
 
-import cn.kejin.android.views.XImageView;
+import cn.kejin.ximageview.XImageView;
 
 public class MainActivity extends AppCompatActivity
 {

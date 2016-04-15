@@ -19,7 +19,7 @@ import com.nostra13.universalimageloader.core.listener.SimpleImageLoadingListene
 
 import java.io.File;
 
-import cn.kejin.android.views.XImageView;
+import cn.kejin.ximageview.XImageView;
 
 public class ImageActivity extends AppCompatActivity
 {

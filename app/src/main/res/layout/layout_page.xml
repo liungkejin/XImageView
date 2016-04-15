@@ -4,7 +4,7 @@
              android:layout_height="match_parent"
              xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <cn.kejin.android.views.XImageView
+    <cn.kejin.ximageview.XImageView
         android:id="@+id/xImageView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"

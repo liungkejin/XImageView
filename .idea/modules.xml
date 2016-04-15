@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/XImageView.iml" filepath="$PROJECT_DIR$/XImageView.iml" />
-      <module fileurl="file://$PROJECT_DIR$/XImageView/XImageView-XImageView.iml" filepath="$PROJECT_DIR$/XImageView/XImageView-XImageView.iml" />
+      <module fileurl="file://$PROJECT_DIR$/LibXImageView.iml" filepath="$PROJECT_DIR$/LibXImageView.iml" />
+      <module fileurl="file://$PROJECT_DIR$/XImageView/XImageView.iml" filepath="$PROJECT_DIR$/XImageView/XImageView.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
     </modules>
   </component>
