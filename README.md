@@ -17,7 +17,7 @@ XImageView 可以显示超大尺寸的图片, 并支持缩放，双击放大， 
 ## Usage
 ```gradle
 dependencies {
-    compile 'cn.kejin.ximageview:XImageView:1.0.0'
+    compile 'cn.kejin.ximageview:XImageView:1.0.1'
 }
 ```
 
