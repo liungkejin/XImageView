@@ -22,7 +22,7 @@ dependencies {
 ```
 
 ```xml
-<cn.kejin.android.views.XImageView
+<cn.kejin.ximageview.XImageView
 	android:id="@+id/xImageView"
 	android:layout_height="match_parent"
 	android:layout_width="match_parent"
