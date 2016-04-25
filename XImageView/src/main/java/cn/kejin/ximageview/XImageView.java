@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.hardware.SensorManager;
+import android.support.annotation.NonNull;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
@@ -32,9 +33,17 @@ import java.io.InputStream;
 /**
  * 能显示大长图
  */
-public class XImageView extends View
+public class XImageView extends View implements IXImageView
 {
     public final static String TAG = "SuperImageView";
+
+    private final static Paint mPaint = new Paint();
+    static {
+        mPaint.setAntiAlias(true);
+        mPaint.setColor(Color.WHITE);
+        mPaint.setStyle(Paint.Style.STROKE);
+        mPaint.setStrokeWidth(2);
+    }
 
     /**
      * 默认双击放大的时间
@@ -54,51 +63,56 @@ public class XImageView extends View
     /**
      * bitmap 的管理器
      */
-    private BitmapManager mBitmapManager = null;
+    private IBitmapManager mBM = null;
+
 
     /**
-     * 初始化状态时，是否需要适应 view
+     * *************Config*****************
      */
-    private boolean mInitFitView = false;
+    private boolean mCacheBitmap = false;
 
-    /**
-     * 双击放大的方式
-     *
-     * 当图片的最大放大尺寸都小于 view 的尺寸时， 强制为 fitImage
-     * fitView: 不管图片的尺寸多少， 双击缩放总是放大到 最大适应view 或者 缩小到 最小适应view
-     * fitImage: 双击缩放的时候为 放大到 Min(最大适应view, 最大放大尺寸) 或者 缩小到 Min(最小适应view, 图片的尺寸)
-     */
-    public enum TYPE_FIT
-    {
-        FIT_VIEW (0),
-        FIT_IMAGE (1);
+    private Bitmap.Config mBitmapConfig = Bitmap.Config.RGB_565;
 
-        final int mType;
-        TYPE_FIT(int t) { mType = t; }
-    }
+    private InitType mInitType = InitType.FIT_VIEW_MIN;
 
-    private TYPE_FIT mDoubleTapScaleType = TYPE_FIT.FIT_VIEW;
+    private DoubleType mDoubleType = DoubleType.FIT_VIEW_MIN_VIEW_MAX;
+//
+//    /**
+//     * 初始化状态时，是否需要适应 view
+//     */
+//    private boolean mInitFitView = false;
+//
+//    /**
+//     * 双击放大的方式
+//     *
+//     * 当图片的最大放大尺寸都小于 view 的尺寸时， 强制为 fitImage
+//     * fitView: 不管图片的尺寸多少， 双击缩放总是放大到 最大适应view 或者 缩小到 最小适应view
+//     * fitImage: 双击缩放的时候为 放大到 Min(最大适应view, 最大放大尺寸) 或者 缩小到 Min(最小适应view, 图片的尺寸)
+//     */
+//    public enum TYPE_FIT
+//    {
+//        FIT_VIEW (0),
+//        FIT_IMAGE (1);
+//
+//        final int mType;
+//        TYPE_FIT(int t) { mType = t; }
+//    }
+//
+//    private TYPE_FIT mDoubleTapScaleType = TYPE_FIT.FIT_VIEW;
 
 
     private float mDisplayDensity = 1;
 
-    private final static Paint mPaint = new Paint();
-    static {
-        mPaint.setAntiAlias(true);
-        mPaint.setColor(Color.WHITE);
-        mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeWidth(2);
-    }
 
     public XImageView(Context context)
     {
         this(context, null, 0);
     }
 
-    public XImageView(Context context, boolean initFitView)
+    public XImageView(Context context, InitType type)
     {
         this(context, null, 0);
-        mInitFitView = initFitView;
+        mInitType = type;
     }
 
     public XImageView(Context context, AttributeSet attrs)
@@ -116,9 +130,16 @@ public class XImageView extends View
     {
         if (attrs != null) {
             TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.XImageView);
-            mInitFitView = ta.getBoolean(R.styleable.XImageView_initFitView, false);
-            int type = ta.getInt(R.styleable.XImageView_doubleTapScaleType, TYPE_FIT.FIT_VIEW.mType);
-            mDoubleTapScaleType = (type == 0) ? TYPE_FIT.FIT_VIEW : TYPE_FIT.FIT_IMAGE;
+
+            int initType = ta.getInt(R.styleable.XImageView_initType, mInitType.value);
+            mInitType = InitType.valueOf(initType);
+
+            int doubleType = ta.getInt(R.styleable.XImageView_doubleType, mDoubleType.value);
+            mDoubleType = DoubleType.valueOf(doubleType);
+
+//            mInitFitView = ta.getBoolean(R.styleable.XImageView_initFitView, false);
+//            int type = ta.getInt(R.styleable.XImageView_doubleTapScaleType, TYPE_FIT.FIT_VIEW.mType);
+//            mDoubleTapScaleType = (type == 0) ? TYPE_FIT.FIT_VIEW : TYPE_FIT.FIT_IMAGE;
 
             ta.recycle();
         }
@@ -164,7 +185,7 @@ public class XImageView extends View
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                if (mBitmapManager != null && !mBitmapManager.checkImageNotAvailable()) {
+                if (mBM != null && !mBM.isNotAvailable()) {
                     interceptParentTouchEvent(true);
                 }
                 break;
@@ -185,8 +206,8 @@ public class XImageView extends View
     {
         int width = getWidth();
         int height = getHeight();
-        if (mBitmapManager != null) {
-            boolean show = mBitmapManager.drawVisibleBitmap(canvas, width, height);
+        if (mBM != null) {
+            boolean show = mBM.draw(canvas, width, height);
         }
     }
 
@@ -207,9 +228,22 @@ public class XImageView extends View
     {
         super.onDetachedFromWindow();
 
-        if (mBitmapManager != null) {
-            mBitmapManager.onDestroy();
+        clearBitmapAndConfig();
+    }
+
+    /**
+     * 清除bitmap 和 config
+     */
+    private void clearBitmapAndConfig()
+    {
+        if (mBM != null) {
+            mBM.destroy();
         }
+        mCacheBitmap = false;
+
+        mInitType = InitType.FIT_VIEW_MIN;
+
+        mDoubleType = DoubleType.FIT_VIEW_MIN_VIEW_MAX;
     }
 
     /**
@@ -235,12 +269,10 @@ public class XImageView extends View
      */
     public void setImage(Bitmap bitmap, boolean cache)
     {
-        if (mBitmapManager != null) {
-            mBitmapManager.onDestroy();
-        }
+        clearBitmapAndConfig();
 
-        mBitmapManager = new BitmapManager(this, bitmap, cache, mManagerCallback);
-        mBitmapManager.setInitFitView(mInitFitView);
+        mCacheBitmap = cache;
+        mBM = new BitmapManager(bitmap, this);
     }
 
 
@@ -291,12 +323,10 @@ public class XImageView extends View
 
     public void setImage(InputStream is, Bitmap.Config config)
     {
-        if (mBitmapManager != null) {
-            mBitmapManager.onDestroy();
-        }
+        clearBitmapAndConfig();
 
-        mBitmapManager = new BitmapManager(this, is, config, mManagerCallback);
-        mBitmapManager.setInitFitView(mInitFitView);
+        mBitmapConfig = config;
+        mBM = new BitmapManager(is, this);
     }
 
     /**
@@ -317,8 +347,8 @@ public class XImageView extends View
      */
     public void scaleImage(float dest, boolean smooth, int smoothTime)
     {
-        if (mBitmapManager != null) {
-            mBitmapManager.scaleFromCenterTo(dest, smooth, smoothTime);
+        if (mBM != null) {
+            mBM.scaleTo(dest, smooth, smoothTime);
         }
     }
 
@@ -332,8 +362,8 @@ public class XImageView extends View
      */
     public void scaleImage(int cx, int cy, float dest, boolean smooth, int smoothTime)
     {
-        if (mBitmapManager != null) {
-            mBitmapManager.scaleTo(cx, cy, dest, smooth, smoothTime);
+        if (mBM != null) {
+            mBM.scaleTo(cx, cy, dest, smooth, smoothTime);
         }
     }
 
@@ -344,10 +374,10 @@ public class XImageView extends View
      * @param smooth 是否动画
      * @param smoothTime 动画时间
      */
-    public void scaleToMaxFitView(int cx, int cy, boolean smooth, int smoothTime)
+    public void scaleToFitViewMax(int cx, int cy, boolean smooth, int smoothTime)
     {
-        if (mBitmapManager != null) {
-            mBitmapManager.scaleToMaxFitView(cx, cy, smooth, smoothTime);
+        if (mBM != null) {
+            mBM.scaleToFitViewMax(cx, cy, smooth, smoothTime);
         }
     }
 
@@ -358,10 +388,10 @@ public class XImageView extends View
      * @param smooth 动画
      * @param smoothTime 动画时间
      */
-    public void scaleToMinFitView(int cx, int cy, boolean smooth, int smoothTime)
+    public void scaleToFitViewMin(int cx, int cy, boolean smooth, int smoothTime)
     {
-        if (mBitmapManager != null) {
-            mBitmapManager.scaleToMinFitView(cx, cy, smooth, smoothTime);
+        if (mBM != null) {
+            mBM.scaleToFitViewMin(cx, cy, smooth, smoothTime);
         }
     }
 
@@ -377,7 +407,7 @@ public class XImageView extends View
      */
     public int scrollImage(int dx, int dy)
     {
-        return (mBitmapManager != null) ? mBitmapManager.offsetShowBitmap(dx, dy) : 0;
+        return (mBM != null) ? mBM.move(dx, dy) : BitmapManager.NONE;
     }
 
 
@@ -387,7 +417,7 @@ public class XImageView extends View
      */
     public float getScaleFactor()
     {
-        return (mBitmapManager != null) ? mBitmapManager.getCurScaleFactor() : 0f;
+        return (mBM != null) ? mBM.getCurScaleFactor() : 0f;
     }
 
     /**
@@ -396,16 +426,16 @@ public class XImageView extends View
      */
     public Rect getRealImageRect()
     {
-        return (mBitmapManager != null) ? mBitmapManager.getImageRect() : new Rect();
+        return (mBM != null) ? mBM.getRealImageRect() : new Rect();
     }
 
     /**
-     * 获取显示出来的图片的尺寸
+     * 获取当前显示出来的图片的尺寸
      * @return Rect
      */
-    public Rect getShowImageRect()
+    public Rect getCurImageRect()
     {
-        return (mBitmapManager != null) ? mBitmapManager.getShowImageRect() : new Rect();
+        return (mBM != null) ? mBM.getCurImageRect() : new Rect();
     }
 
     /**
@@ -414,54 +444,122 @@ public class XImageView extends View
      */
     public boolean isSettingImage()
     {
-        return (mBitmapManager != null) && mBitmapManager.isSettingImage();
+        return (mBM != null) && mBM.isSettingImage();
     }
 
     /**
-     * 设置 initFitView
-     * @param fitView fit view
+     * 设置初始化类型
+     * @param type init type
      */
-    public void setInitFitView(boolean fitView)
+    public void setInitType(InitType type)
     {
-        mInitFitView = fitView;
-        if (mBitmapManager != null) {
-            mBitmapManager.setInitFitView(mInitFitView);
-        }
+        mInitType = type == null ? InitType.FIT_VIEW_MIN : type;
     }
 
     /**
      * 设置双击缩放的缩放方式, 默认为 fitView
      * @param type fit type
      */
-    public void setDoubleTapScaleType(TYPE_FIT type)
+    public void setDoubleTapScaleType(DoubleType type)
     {
-        mDoubleTapScaleType = (type == null) ? TYPE_FIT.FIT_VIEW : type;
+        mDoubleType = (type == null) ? DoubleType.FIT_VIEW_MIN_VIEW_MAX : type;
     }
 
-    private BitmapManager.IManagerCallback
-            mManagerCallback = new BitmapManager.IManagerCallback()
-    {
-        @Override
-        public void onSetImageStart()
-        {
-            if (mActionListener != null) {
-                mActionListener.onSetImageStart(XImageView.this);
-            }
-        }
 
-        @Override
-        public void onSetImageFinished(BitmapManager bm, boolean success, Rect image)
-        {
-            if (bm == mBitmapManager) {
-//                if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
-//                    scaleToMinFitView(image.centerX(), image.centerY(), false, 0);
-//                }
-                if (mActionListener != null) {
-                    mActionListener.onSetImageFinished(XImageView.this, success, image);
-                }
-            }
+    @NonNull
+    @Override
+    public File getCacheDir()
+    {
+        return getContext().getCacheDir();
+    }
+
+    @Override
+    public void callInvalidate()
+    {
+        invalidate();
+    }
+
+    @Override
+    public void callPostInvalidate()
+    {
+        postInvalidate();
+    }
+
+    @Override
+    public void callPost(Runnable runnable)
+    {
+        post(runnable);
+    }
+
+    @Override
+    public Bitmap.Config getBitmapConfig()
+    {
+        return mBitmapConfig;
+    }
+
+    @Override
+    public boolean enableCache()
+    {
+        return mCacheBitmap;
+    }
+
+    @Override
+    public boolean initAnimation()
+    {
+        return false; // TODO
+    }
+
+    @Override
+    public InitType getInitType()
+    {
+        return mInitType;
+    }
+
+    @Override
+    public DoubleType getDoubleType()
+    {
+        return mDoubleType;
+    }
+
+    @Override
+    public boolean enableScaleOver()
+    {
+        return false; // TODO
+    }
+
+    @Override
+    public void onSetImageFinished(BitmapManager bm, boolean success, Rect image)
+    {
+        if (mActionListener != null && bm == mBM) {
+            mActionListener.onSetImageFinished(this, success, image);
         }
-    };
+    }
+
+//
+//    private BitmapManager.IManagerCallback
+//            mManagerCallback = new BitmapManager.IManagerCallback()
+//    {
+//        @Override
+//        public void onSetImageStart()
+//        {
+//            if (mActionListener != null) {
+//                mActionListener.onSetImageStart(XImageView.this);
+//            }
+//        }
+//
+//        @Override
+//        public void onSetImageFinished(BitmapManager bm, boolean success, Rect image)
+//        {
+//            if (bm == mBM) {
+////                if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
+////                    scaleToFitViewMin(image.centerX(), image.centerY(), false, 0);
+////                }
+//                if (mActionListener != null) {
+//                    mActionListener.onSetImageFinished(XImageView.this, success, image);
+//                }
+//            }
+//        }
+//    };
 
     /********************* Gesture Detector & Listener *******************************/
 
@@ -498,9 +596,9 @@ public class XImageView extends View
         {
             int x = (int) e.getX();
             int y = (int) e.getY();
-//            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y + " Is: " + (mBitmapManager != null && mBitmapManager.isTapOnImage(x, y)));
+//            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y + " Is: " + (mBM != null && mBM.isTapOnImage(x, y)));
             if (mActionListener != null) {
-                mActionListener.onSingleTapped(XImageView.this, e, mBitmapManager != null && mBitmapManager.isTapOnImage(x, y));
+                mActionListener.onSingleTapped(XImageView.this, e, mBM != null && mBM.isTapOnImage(x, y));
             }
             return true;
         }
@@ -508,7 +606,7 @@ public class XImageView extends View
         @Override
         public boolean onDoubleTap(MotionEvent e)
         {
-            if (mBitmapManager == null) {
+            if (mBM == null) {
                 return false;
             }
 
@@ -519,7 +617,7 @@ public class XImageView extends View
             if (!handled) {
                 int x = (int) e.getX();
                 int y = (int) e.getY();
-                mBitmapManager.scaleToFitView(mDoubleTapScaleType, x, y, true, DOUBLE_SCALE_TIME);
+                mBM.doubleTapScale(x, y, true, DOUBLE_SCALE_TIME);
             }
             return true;
         }
@@ -536,11 +634,11 @@ public class XImageView extends View
         @Override
         public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY)
         {
-            if (mBitmapManager == null) {
+            if (mBM == null) {
                 return false;
             }
 
-            int state = mBitmapManager.offsetShowBitmap((int) -distanceX, (int) -distanceY);
+            int state = mBM.move((int) -distanceX, (int) -distanceY);
 
             if ((state & BitmapManager.LEFT) == BitmapManager.LEFT ||
                     (state & BitmapManager.RIGHT) == BitmapManager.RIGHT) {
@@ -564,13 +662,12 @@ public class XImageView extends View
         @Override
         public boolean onScale(ScaleGestureDetector detector)
         {
-            if (mBitmapManager == null) {
+            if (mBM == null) {
                 return false;
             }
 
             float factor = detector.getScaleFactor();
-            mBitmapManager.scaleShowBitmap(
-                    detector.getFocusX(), detector.getFocusY(), factor);
+            mBM.scale(detector.getFocusX(), detector.getFocusY(), factor);
 
             return true;
         }
@@ -587,8 +684,8 @@ public class XImageView extends View
             /**
              * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
              */
-            if (mBitmapManager != null) {
-                mBitmapManager.updateSampleSize();
+            if (mBM != null) {
+                mBM.updateSampleSize();
             }
         }
 
@@ -647,8 +744,8 @@ public class XImageView extends View
 
 //                Log.e(TAG, "Dx: " + dx + "  DY: " + dy);
 
-                if (mBitmapManager != null) {
-                    mBitmapManager.offsetShowBitmap(dx, dy);
+                if (mBM != null) {
+                    mBM.move(dx, dy);
                 }
 
                 mLastDisX = curDisX;
@@ -704,12 +801,12 @@ public class XImageView extends View
          */
         void onLongPressed(XImageView view, MotionEvent event);
 
-        /**
-         * 当开始设置图片时或者当转屏或者view尺寸发生变化时
-         * （即需要重新设置图片时）回调此方法
-         * @param view XImageView
-         */
-        void onSetImageStart(XImageView view);
+//        /**
+//         * 当开始设置图片时或者当转屏或者view尺寸发生变化时
+//         * （即需要重新设置图片时）回调此方法
+//         * @param view XImageView
+//         */
+//        void onSetImageStart(XImageView view);
 
         /**
          * 初始化完成，图片已经显示
@@ -740,12 +837,12 @@ public class XImageView extends View
         {
 
         }
-
-        @Override
-        public void onSetImageStart(XImageView view)
-        {
-
-        }
+//
+//        @Override
+//        public void onSetImageStart(XImageView view)
+//        {
+//
+//        }
 
         @Override
         public void onSetImageFinished(XImageView view, boolean success, Rect image)

@@ -2,6 +2,20 @@
 <resources>
     <declare-styleable name="XImageView">
         <!-- 初始化状态时, 如果图片小于 view 的尺寸，是否需要适应view的尺寸-->
+        <attr name="initType" format="enum" >
+            <enum name="fitViewMin" value="1" />
+            <enum name="fitViewMax" value="2" />
+            <enum name="fitImage" value="4" />
+            <enum name="fitViewMinImageMin" value="8" />
+        </attr>
+
+        <attr name="doubleType" format="enum">
+            <enum name="fitViewMinViewMax" value="1" />
+            <enum name="fitImageMinViewMax" value="2" />
+            <enum name="fitViewMinImageMax" value="4" />
+            <enum name="fitImageMinImageMax" value="8" />
+        </attr>
+
         <attr name="initFitView" format="boolean"/>
         <attr name="doubleTapScaleType" format="enum">
             <!-- 不管图片的尺寸多少， 双击缩放总是放大到 最大适应view 或者 缩小到 最小适应view-->
