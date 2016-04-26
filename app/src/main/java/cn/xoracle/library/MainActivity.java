@@ -50,7 +50,7 @@ public class MainActivity extends AppCompatActivity
             public Object instantiateItem(ViewGroup container, int position)
             {
                 View view = View.inflate(MainActivity.this, R.layout.layout_page, null);
-
+                view.findViewById(R.id.progress).setVisibility(View.VISIBLE);
                 setupXImageView((XImageView) view.findViewById(R.id.xImageView), (ProgressBar) view.findViewById(R.id.progress), position);
                 container.addView(view);
 
@@ -86,7 +86,7 @@ public class MainActivity extends AppCompatActivity
                     break;
 
                 case 4:
-                    imageView.setDoubleTapScaleType(XImageView.TYPE_FIT.FIT_IMAGE);
+//                    imageView.setDoubleTapScaleType(XImageView.TYPE_FIT.FIT_IMAGE);
                     imageView.setImage(getAssets().open("d.jpg"));
                     break;
 
@@ -121,12 +121,12 @@ public class MainActivity extends AppCompatActivity
                 startActivity(new Intent(getApplicationContext(), ImageActivity.class));
             }
 
-            @Override
-            public void onSetImageStart(XImageView view)
-            {
-//                toastShort("Start set Image..");
-                progressBar.setVisibility(View.VISIBLE);
-            }
+//            @Override
+//            public void onSetImageStart(XImageView view)
+//            {
+////                toastShort("Start set Image..");
+//                progressBar.setVisibility(View.VISIBLE);
+//            }
 
             @Override
             public void onSetImageFinished(XImageView view, boolean success, Rect image)

@@ -124,7 +124,16 @@ public interface IXImageView
         }
     }
 
+    /**
+     * @return XImageView 的实例
+     */
+    XImageView getInstance();
 
+    /**
+     * 劫断输入
+     * @param intercept 是否劫持
+     */
+    void interceptParentTouchEvent(boolean intercept);
 
     /**
      * @return view的宽

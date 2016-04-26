@@ -1,8 +1,11 @@
 package cn.kejin.ximageview;
 
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.support.annotation.NonNull;
+
+import java.io.InputStream;
 
 /**
  * Author: Kejin ( Liang Ke Jin )
@@ -43,6 +46,17 @@ public interface IBitmapManager
      * @return boolean
      */
     boolean isSettingImage();
+
+
+    /**
+     * @param bitmap 设置 bitmap
+     */
+    void setBitmap(Bitmap bitmap, boolean cache);
+
+    /**
+     * @param is 设置输入流
+     */
+    void setInputStream(InputStream is, Bitmap.Config config);
 
 
     /**

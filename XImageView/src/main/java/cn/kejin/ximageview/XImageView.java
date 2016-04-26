@@ -1,6 +1,5 @@
 package cn.kejin.ximageview;
 
-import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -8,16 +7,12 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
-import android.hardware.SensorManager;
 import android.support.annotation.NonNull;
 import android.util.AttributeSet;
-import android.view.GestureDetector;
+import android.util.Log;
 import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.ViewParent;
-import android.view.animation.LinearInterpolator;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -35,7 +30,7 @@ import java.io.InputStream;
  */
 public class XImageView extends View implements IXImageView
 {
-    public final static String TAG = "SuperImageView";
+    public final static String TAG = "XImageView";
 
     private final static Paint mPaint = new Paint();
     static {
@@ -45,15 +40,11 @@ public class XImageView extends View implements IXImageView
         mPaint.setStrokeWidth(2);
     }
 
-    /**
-     * 默认双击放大的时间
-     */
-    private final static int DOUBLE_SCALE_TIME = 400;
 
     /**
      * Gesture Detector
      */
-    private XGestureDetector mGestureDetector = null;
+    private GestureManager mGestureManager = null;
 
     /**
      * Action Listener
@@ -69,9 +60,9 @@ public class XImageView extends View implements IXImageView
     /**
      * *************Config*****************
      */
-    private boolean mCacheBitmap = false;
-
-    private Bitmap.Config mBitmapConfig = Bitmap.Config.RGB_565;
+//    private boolean mCacheBitmap = false;
+//
+//    private Bitmap.Config mBitmapConfig = Bitmap.Config.RGB_565;
 
     private InitType mInitType = InitType.FIT_VIEW_MIN;
 
@@ -99,9 +90,6 @@ public class XImageView extends View implements IXImageView
 //    }
 //
 //    private TYPE_FIT mDoubleTapScaleType = TYPE_FIT.FIT_VIEW;
-
-
-    private float mDisplayDensity = 1;
 
 
     public XImageView(Context context)
@@ -137,17 +125,11 @@ public class XImageView extends View implements IXImageView
             int doubleType = ta.getInt(R.styleable.XImageView_doubleType, mDoubleType.value);
             mDoubleType = DoubleType.valueOf(doubleType);
 
-//            mInitFitView = ta.getBoolean(R.styleable.XImageView_initFitView, false);
-//            int type = ta.getInt(R.styleable.XImageView_doubleTapScaleType, TYPE_FIT.FIT_VIEW.mType);
-//            mDoubleTapScaleType = (type == 0) ? TYPE_FIT.FIT_VIEW : TYPE_FIT.FIT_IMAGE;
-
             ta.recycle();
         }
-        mDisplayDensity = context.getResources().getDisplayMetrics().density;
-        float dpi = mDisplayDensity * 160.0f;
-        mPhysicalCoeff = SensorManager.GRAVITY_EARTH  * 39.37f * dpi * 0.84f;
 
-        mGestureDetector = new XGestureDetector(context);
+        mBM = new BitmapManager(this);
+        mGestureManager = new GestureManager(this, mBM);
 
         super.setOnLongClickListener(new OnLongClickListener()
         {
@@ -165,23 +147,11 @@ public class XImageView extends View implements IXImageView
         // nothing
     }
 
-    @Override
-    protected void onSizeChanged(int w, int h, int oldw, int oldh)
-    {
-        super.onSizeChanged(w, h, oldw, oldh);
-    }
-
-
-    @Override
-    public boolean onTouchEvent(MotionEvent event)
-    {
-        return super.onTouchEvent(event);
-    }
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event)
     {
-        mGestureDetector.onTouchEvent(event);
+        mGestureManager.onTouchEvent(event);
 
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
@@ -221,6 +191,10 @@ public class XImageView extends View implements IXImageView
     protected void onAttachedToWindow()
     {
         super.onAttachedToWindow();
+
+        if(DEBUG) {
+            Log.e(TAG, "OnAttachedToWindow");
+        }
     }
 
     @Override
@@ -228,34 +202,27 @@ public class XImageView extends View implements IXImageView
     {
         super.onDetachedFromWindow();
 
-        clearBitmapAndConfig();
+        mBM.destroy();
+
+        if (DEBUG) {
+            Log.e(TAG, "onDetachedFromWindow");
+        }
     }
 
     /**
      * 清除bitmap 和 config
      */
-    private void clearBitmapAndConfig()
-    {
-        if (mBM != null) {
-            mBM.destroy();
-        }
-        mCacheBitmap = false;
-
-        mInitType = InitType.FIT_VIEW_MIN;
-
-        mDoubleType = DoubleType.FIT_VIEW_MIN_VIEW_MAX;
-    }
-
-    /**
-     * 是否劫持输入事件, ViewPager
-     */
-    private void interceptParentTouchEvent(boolean intercept)
-    {
-        ViewParent parent = getParent();
-        if (parent != null) {
-            parent.requestDisallowInterceptTouchEvent(intercept);
-        }
-    }
+//    private void clearBitmapAndConfig()
+//    {
+//        if (mBM != null) {
+//            mBM.destroy();
+//        }
+//        mCacheBitmap = false;
+//
+//        mInitType = InitType.FIT_VIEW_MIN;
+//
+//        mDoubleType = DoubleType.FIT_VIEW_MIN_VIEW_MAX;
+//    }
 
     public void setImage(Bitmap bitmap)
     {
@@ -269,10 +236,7 @@ public class XImageView extends View implements IXImageView
      */
     public void setImage(Bitmap bitmap, boolean cache)
     {
-        clearBitmapAndConfig();
-
-        mCacheBitmap = cache;
-        mBM = new BitmapManager(bitmap, this);
+        mBM.setBitmap(bitmap, cache);
     }
 
 
@@ -310,6 +274,7 @@ public class XImageView extends View implements IXImageView
         }
         catch (FileNotFoundException e) {
             e.printStackTrace();
+            onSetImageFinished(null, false, new Rect());
         }
     }
 
@@ -323,10 +288,7 @@ public class XImageView extends View implements IXImageView
 
     public void setImage(InputStream is, Bitmap.Config config)
     {
-        clearBitmapAndConfig();
-
-        mBitmapConfig = config;
-        mBM = new BitmapManager(is, this);
+        mBM.setInputStream(is, config);
     }
 
     /**
@@ -336,6 +298,7 @@ public class XImageView extends View implements IXImageView
     public void setActionListener(OnActionListener listener)
     {
         mActionListener = listener;
+        mGestureManager.setActionListener(listener);
     }
 
     /**
@@ -465,6 +428,23 @@ public class XImageView extends View implements IXImageView
         mDoubleType = (type == null) ? DoubleType.FIT_VIEW_MIN_VIEW_MAX : type;
     }
 
+    @Override
+    public XImageView getInstance()
+    {
+        return this;
+    }
+
+    /**
+     * 是否劫持输入事件, ViewPager
+     */
+    @Override
+    public void interceptParentTouchEvent(boolean intercept)
+    {
+        ViewParent parent = getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(intercept);
+        }
+    }
 
     @NonNull
     @Override
@@ -488,19 +468,20 @@ public class XImageView extends View implements IXImageView
     @Override
     public void callPost(Runnable runnable)
     {
+        removeCallbacks(runnable);
         post(runnable);
     }
 
     @Override
     public Bitmap.Config getBitmapConfig()
     {
-        return mBitmapConfig;
+        return Bitmap.Config.RGB_565;
     }
 
     @Override
     public boolean enableCache()
     {
-        return mCacheBitmap;
+        return false;
     }
 
     @Override
@@ -533,246 +514,6 @@ public class XImageView extends View implements IXImageView
         if (mActionListener != null && bm == mBM) {
             mActionListener.onSetImageFinished(this, success, image);
         }
-    }
-
-//
-//    private BitmapManager.IManagerCallback
-//            mManagerCallback = new BitmapManager.IManagerCallback()
-//    {
-//        @Override
-//        public void onSetImageStart()
-//        {
-//            if (mActionListener != null) {
-//                mActionListener.onSetImageStart(XImageView.this);
-//            }
-//        }
-//
-//        @Override
-//        public void onSetImageFinished(BitmapManager bm, boolean success, Rect image)
-//        {
-//            if (bm == mBM) {
-////                if (mInitFitView && image.width() < getWidth() && image.height() < getHeight()) {
-////                    scaleToFitViewMin(image.centerX(), image.centerY(), false, 0);
-////                }
-//                if (mActionListener != null) {
-//                    mActionListener.onSetImageFinished(XImageView.this, success, image);
-//                }
-//            }
-//        }
-//    };
-
-    /********************* Gesture Detector & Listener *******************************/
-
-    private XOnGestureListener mGestureListener = new XOnGestureListener();
-    private class XGestureDetector extends GestureDetector
-    {
-        /**
-         * 放大手势检测
-         */
-        private ScaleGestureDetector mScaleDetector = null;
-
-        public XGestureDetector(Context context)
-        {
-            super(context, mGestureListener);
-            mScaleDetector = new ScaleGestureDetector(context, mGestureListener);
-        }
-
-        @Override
-        public boolean onTouchEvent(MotionEvent event)
-        {
-            stopFling();
-
-            mScaleDetector.onTouchEvent(event);
-
-            return super.onTouchEvent(event);
-        }
-    }
-
-    private class XOnGestureListener extends
-            GestureDetector.SimpleOnGestureListener implements ScaleGestureDetector.OnScaleGestureListener
-    {
-        @Override
-        public boolean onSingleTapConfirmed(MotionEvent e)
-        {
-            int x = (int) e.getX();
-            int y = (int) e.getY();
-//            Log.e(TAG, "On Tapped: X: " + x + " Y: " + y + " Is: " + (mBM != null && mBM.isTapOnImage(x, y)));
-            if (mActionListener != null) {
-                mActionListener.onSingleTapped(XImageView.this, e, mBM != null && mBM.isTapOnImage(x, y));
-            }
-            return true;
-        }
-
-        @Override
-        public boolean onDoubleTap(MotionEvent e)
-        {
-            if (mBM == null) {
-                return false;
-            }
-
-            boolean handled = false;
-            if (mActionListener != null) {
-                handled = mActionListener.onDoubleTapped(XImageView.this, e);
-            }
-            if (!handled) {
-                int x = (int) e.getX();
-                int y = (int) e.getY();
-                mBM.doubleTapScale(x, y, true, DOUBLE_SCALE_TIME);
-            }
-            return true;
-        }
-
-        @Override
-        public void onLongPress(MotionEvent e)
-        {
-            if (mActionListener != null) {
-                mActionListener.onLongPressed(XImageView.this, e);
-            }
-        }
-
-        /*************************************滑动****************************************/
-        @Override
-        public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY)
-        {
-            if (mBM == null) {
-                return false;
-            }
-
-            int state = mBM.move((int) -distanceX, (int) -distanceY);
-
-            if ((state & BitmapManager.LEFT) == BitmapManager.LEFT ||
-                    (state & BitmapManager.RIGHT) == BitmapManager.RIGHT) {
-//                Log.e(TAG, "dis intercept...");
-                interceptParentTouchEvent(false);
-            }
-
-            return true;
-        }
-
-        @Override
-        public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY)
-        {
-//            Log.e(TAG, "VX: " + velocityX + "  VY: " + velocityY);
-            startFling(velocityX * 1.2f, velocityY * 1.2f);
-            return true;
-        }
-
-        /*************************************缩放**************************************/
-
-        @Override
-        public boolean onScale(ScaleGestureDetector detector)
-        {
-            if (mBM == null) {
-                return false;
-            }
-
-            float factor = detector.getScaleFactor();
-            mBM.scale(detector.getFocusX(), detector.getFocusY(), factor);
-
-            return true;
-        }
-
-        @Override
-        public boolean onScaleBegin(ScaleGestureDetector detector)
-        {
-            return true;
-        }
-
-        @Override
-        public void onScaleEnd(ScaleGestureDetector detector)
-        {
-            /**
-             * 当缩放结束后，计算最新的的SampleSize, 如果SampleSize改变了，则重新解码最新的bitmap
-             */
-            if (mBM != null) {
-                mBM.updateSampleSize();
-            }
-        }
-
-    }
-
-    /**********************************滑动惯性*******************************/
-
-    private float mPhysicalCoeff;
-    private float mFlingFriction = ViewConfiguration.getScrollFriction();
-    private final static float DECELERATION_RATE = (float) (Math.log(0.78) / Math.log(0.9));
-    private final static float INFLEXION = 0.35f; // Tension lines cross at (INFLEXION, 1)
-
-    private ValueAnimator mValueAnimator = null;
-
-    private void stopFling()
-    {
-        if (mValueAnimator != null) {
-            mValueAnimator.cancel();
-        }
-    }
-
-    private void startFling(final float velocityX, final float velocityY)
-    {
-        stopFling();
-
-        final float fx = (velocityX < 0 ? 1 : -1);
-        final float fy = (velocityY < 0 ? 1 : -1);
-
-        final float velocity = (float) Math.hypot(velocityX, velocityY);
-        final long duration = getSplineFlingDuration(velocity);
-
-        mValueAnimator = ValueAnimator.ofFloat(1f, 0);
-        mValueAnimator.setInterpolator(new LinearInterpolator());
-        mValueAnimator.setDuration(duration);
-        mValueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener()
-        {
-            private Double mLastDisX = Double.NaN;
-            private Double mLastDisY = Double.NaN;
-
-            @Override
-            public void onAnimationUpdate(ValueAnimator animation)
-            {
-                float value = (float) animation.getAnimatedValue();
-
-                double curDisX = getSplineFlingDistance(value * velocityX) * fx;
-                double curDisY = getSplineFlingDistance(value * velocityY) * fy;
-
-                if (mLastDisX.isNaN() || mLastDisY.isNaN()) {
-                    mLastDisX = curDisX;
-                    mLastDisY = curDisY;
-                    return;
-                }
-
-                int dx = (int) (curDisX - mLastDisX);
-                int dy = (int) (curDisY - mLastDisY);
-
-//                Log.e(TAG, "Dx: " + dx + "  DY: " + dy);
-
-                if (mBM != null) {
-                    mBM.move(dx, dy);
-                }
-
-                mLastDisX = curDisX;
-                mLastDisY = curDisY;
-            }
-        });
-
-        mValueAnimator.start();
-    }
-
-    private double getSplineDeceleration(float velocity)
-    {
-        return Math.log(INFLEXION * Math.abs(velocity) / (mFlingFriction * mPhysicalCoeff));
-    }
-
-    private int getSplineFlingDuration(float velocity)
-    {
-        final double l = getSplineDeceleration(velocity);
-        final double decelMinusOne = DECELERATION_RATE - 1.0;
-        return (int) (1000.0 * Math.exp(l / decelMinusOne));
-    }
-
-    private double getSplineFlingDistance(float velocity)
-    {
-        final double l = getSplineDeceleration(velocity);
-        final double decelMinusOne = DECELERATION_RATE - 1.0;
-        return mFlingFriction * mPhysicalCoeff * Math.exp(DECELERATION_RATE / decelMinusOne * l);
     }
 
 
@@ -852,14 +593,14 @@ public class XImageView extends View implements IXImageView
     }
 
 
-    private int dpToPx(float dp)
-    {
-        return (int) (dp * mDisplayDensity + 0.5f);
-    }
-
-    private int pxToDp(float px)
-    {
-        return (int) (px / mDisplayDensity + 0.5f);
-    }
+//    private int dpToPx(float dp)
+//    {
+//        return (int) (dp * mDisplayDensity + 0.5f);
+//    }
+//
+//    private int pxToDp(float px)
+//    {
+//        return (int) (px / mDisplayDensity + 0.5f);
+//    }
 
 }

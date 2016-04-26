@@ -42,6 +42,8 @@ public class BitmapManager implements IBitmapManager
         mPaint.setStrokeWidth(2);
     }
 
+    private Handler mMainHandler = new Handler();
+
     /**
      * 异步处理图片的解码
      */
@@ -133,7 +135,7 @@ public class BitmapManager implements IBitmapManager
     /**
      * 用于和XImageView 回调的接口
      */
-    private IXImageView mViewCallback = null;
+    private IXImageView mXImageView = null;
 
     /**
      * 表示正在初始化图片， 此时不能显示图片
@@ -141,32 +143,40 @@ public class BitmapManager implements IBitmapManager
     private boolean mIsSettingImage = true;
 
 
-    public BitmapManager(final Bitmap bitmap, @NonNull final IXImageView callback)
+    public BitmapManager(@NonNull IXImageView view)
     {
-        mViewCallback = callback;
-        initialize();
-        setSrcBitmap(bitmap);
+        mXImageView = view;
     }
 
-    public BitmapManager(final InputStream is, @NonNull final IXImageView callback)
+    /**
+     * TODO 一个 XImageView 使用一个 BitmapManager,
+     * TODO 在 XImageView 的 onDraw() 中执行, 保证能获取到 width 和 height
+     * @param bitmap
+     */
+    @Override
+    public void setBitmap(Bitmap bitmap, boolean cache)
     {
-        mViewCallback = callback;
-        initialize();
+        initialize(Bitmap.Config.ARGB_8888);
+        setSrcBitmap(bitmap, cache);
+    }
 
+    @Override
+    public void setInputStream(InputStream is, Bitmap.Config config)
+    {
+        initialize(config);
         setBitmapDecoder(is);
     }
 
     /**
      * 开启HandlerThread
      */
-    private void initialize()
+    private void initialize(Bitmap.Config config)
     {
         onSetImageStart();
 
-        Bitmap.Config config = mViewCallback.getBitmapConfig();
         mBitmapConfig = config == null ? Bitmap.Config.RGB_565 : config;
 
-        mCacheFile = new File(mViewCallback.getCacheDir(), UUID.randomUUID().toString());
+        mCacheFile = new File(mXImageView.getCacheDir(), UUID.randomUUID().toString());
         mCacheFile.deleteOnExit();
 
         mLoadingThread = new HandlerThread(THREAD_NAME + this.hashCode());
@@ -188,12 +198,12 @@ public class BitmapManager implements IBitmapManager
      */
     private void startInitImageThumb()
     {
-        mViewCallback.callPost(new Runnable()
+        mXImageView.callPost(new Runnable()
         {
             @Override
             public void run()
             {
-                updateViewRect(mViewCallback.getWidth(), mViewCallback.getHeight());
+                updateViewRect(mXImageView.getWidth(), mXImageView.getHeight());
             }
         });
     }
@@ -211,7 +221,7 @@ public class BitmapManager implements IBitmapManager
             /**
              * TODO: 在这里完成初始化的动画或者特殊处理
              */
-            IXImageView.InitType type = mViewCallback.getInitType();
+            IXImageView.InitType type = mXImageView.getInitType();
             type = type == null ? IXImageView.InitType.FIT_VIEW_MIN : type;
             switch (type) {
                 case FIT_VIEW_MIN:
@@ -230,28 +240,28 @@ public class BitmapManager implements IBitmapManager
             }
         }
 
-        mViewCallback.callPost(new Runnable()
+        mXImageView.callPost(new Runnable()
         {
             @Override
             public void run()
             {
-                mViewCallback.onSetImageFinished(BitmapManager.this, success, image);
+                mXImageView.onSetImageFinished(BitmapManager.this, success, image);
             }
         });
-        mViewCallback.callPostInvalidate();
+        mXImageView.callPostInvalidate();
     }
 
     /**
      * 直接设置 Bitmap, 这个函数只会走一次
      */
-    private void setSrcBitmap(final Bitmap bitmap)
+    private void setSrcBitmap(final Bitmap bitmap, boolean enableCache)
     {
         if (bitmap == null) {
             onSetImageFinished(true);
             return;
         }
 
-        if (mViewCallback.enableCache()) {
+        if (enableCache) {
             mLoadingHandler.post(new Runnable()
             {
                 @Override
@@ -276,12 +286,12 @@ public class BitmapManager implements IBitmapManager
             mSrcBitmap = bitmap;
             mImageRect.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
 
-            mViewCallback.callPost(new Runnable()
+            mXImageView.callPost(new Runnable()
             {
                 @Override
                 public void run()
                 {
-                    updateViewRect(mViewCallback.getWidth(), mViewCallback.getHeight());
+                    updateViewRect(mXImageView.getWidth(), mXImageView.getHeight());
                 }
             });
         }
@@ -838,7 +848,7 @@ public class BitmapManager implements IBitmapManager
                             if (mGrids[n][m].mCurSampleSize != mSampleSize) {
                                 return;
                             }
-                            mViewCallback.callPostInvalidate();
+                            mXImageView.callPostInvalidate();
                         }
                     }
                 });
@@ -1256,7 +1266,7 @@ public class BitmapManager implements IBitmapManager
         }
 
         mViewBitmapRect.offset(-(rx == Integer.MAX_VALUE ? 0 : rx), -(ry == Integer.MAX_VALUE ? 0 : ry));
-        mViewCallback.callPostInvalidate();
+        mXImageView.callPostInvalidate();
 
         /**
          * 检查到达边界的方向
@@ -1396,7 +1406,7 @@ public class BitmapManager implements IBitmapManager
 
 //        Log.e(TAG, "=====================================================================");
 
-        mViewCallback.callPostInvalidate();
+        mXImageView.callPostInvalidate();
     }
 
 
@@ -1516,7 +1526,7 @@ public class BitmapManager implements IBitmapManager
         float maxFitScale = getMaxFitViewScaleFactor();
         float minFitScale = getMinFitViewScaleFactor();
 
-        IXImageView.DoubleType type = mViewCallback.getDoubleType();
+        IXImageView.DoubleType type = mXImageView.getDoubleType();
         if (type == null) {
             type = IXImageView.DoubleType.FIT_VIEW_MIN_VIEW_MAX;
         }
@@ -1608,7 +1618,7 @@ public class BitmapManager implements IBitmapManager
         }
         mSampleSize = sampleSize;
 
-        mViewCallback.callPostInvalidate();
+        mXImageView.callPostInvalidate();
 
     }
 
@@ -1619,6 +1629,6 @@ public class BitmapManager implements IBitmapManager
         mCacheFile.delete(); // 删除临时文件
         recycleAll();
 
-        mViewCallback.callPostInvalidate();
+        mXImageView.callPostInvalidate();
     }
 }
