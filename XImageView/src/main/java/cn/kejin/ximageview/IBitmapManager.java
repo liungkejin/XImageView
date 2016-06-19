@@ -50,11 +50,13 @@ public interface IBitmapManager
 
     /**
      * @param bitmap 设置 bitmap
+     * @param cache 是否cache
      */
     void setBitmap(Bitmap bitmap, boolean cache);
 
     /**
      * @param is 设置输入流
+     * @param config config
      */
     void setInputStream(InputStream is, Bitmap.Config config);
 
@@ -90,6 +92,13 @@ public interface IBitmapManager
      * @param scale 缩放倍数
      */
     void scale(float cx, float cy, float scale);
+
+    /**
+     * 当View的size改变, 需要重新计算
+     * @param width width
+     * @param height height
+     */
+    void onViewSizeChanged(int width, int height);
 
     /**
      * 画出可见区域的bitmap
@@ -132,7 +141,7 @@ public interface IBitmapManager
      * 缩放到适应屏幕
      * 如果此时整个图片都在 视图可见区域中, 则放大到占满整个屏幕
      * 如果整个图片不再可见区域中， 则缩小到整个视图可见大小
-     * <p/>
+     *
      * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
      * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
      *
@@ -151,7 +160,7 @@ public interface IBitmapManager
     void doubleTapScale(boolean smooth, long smoothTime);
 
     /**
-     * 缩放到最大适应屏幕
+     * 缩放到最大适应View
      *
      * @param cx         中心点
      * @param cy         中心点
@@ -161,7 +170,7 @@ public interface IBitmapManager
     void scaleToFitViewMax(int cx, int cy, boolean smooth, long smoothTime);
 
     /**
-     * 缩放到最小适应屏幕
+     * 缩放到最小适应View
      *
      * @param cx         中心点
      * @param cy         中心点

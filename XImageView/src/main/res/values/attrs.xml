@@ -15,15 +15,5 @@
             <enum name="fitViewMinImageMax" value="4" />
             <enum name="fitImageMinImageMax" value="8" />
         </attr>
-
-        <attr name="initFitView" format="boolean"/>
-        <attr name="doubleTapScaleType" format="enum">
-            <!-- 不管图片的尺寸多少， 双击缩放总是放大到 最大适应view 或者 缩小到 最小适应view-->
-            <!-- 当图片的最大放大尺寸都小于 view 的尺寸时， 强制为 fitImage -->
-            <enum name="fitView" value="0"/>
-
-            <!-- 双击缩放的时候为 放大到 Min(最大适应view, 最大放大尺寸) 或者 缩小到 Min(最小适应view, 图片的尺寸) -->
-            <enum name="fitImage" value="1"/>
-        </attr>
     </declare-styleable>
 </resources>

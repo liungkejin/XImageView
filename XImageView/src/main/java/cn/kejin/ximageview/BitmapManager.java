@@ -42,13 +42,13 @@ public class BitmapManager implements IBitmapManager
         mPaint.setStrokeWidth(2);
     }
 
-    private Handler mMainHandler = new Handler();
+    private final Handler mMainHandler = new Handler();
 
     /**
      * 异步处理图片的解码
      */
     private Handler mLoadingHandler = null;
-    private HandlerThread mLoadingThread = null;
+    private final HandlerThread mLoadingThread;
     private final static String THREAD_NAME = "XImageLoader";
 
     /**
@@ -64,7 +64,7 @@ public class BitmapManager implements IBitmapManager
     /**
      * Cache 文件
      */
-    private File mCacheFile = null;
+    private final File mCacheFile;
 
     /**
      * 质量参数, 默认为 RGB_565
@@ -142,16 +142,20 @@ public class BitmapManager implements IBitmapManager
      */
     private boolean mIsSettingImage = true;
 
-
     public BitmapManager(@NonNull IXImageView view)
     {
         mXImageView = view;
+        mLoadingThread = new HandlerThread(THREAD_NAME + this.hashCode());
+        mCacheFile = new File(mXImageView.getCacheDir(), UUID.randomUUID().toString());
+        mCacheFile.deleteOnExit();
+
+        // 默认一个, 等onViewSizeChanged的时候再更新
+//        mViewRect.set(0, 0, 1920, 1080);
     }
 
     /**
-     * TODO 一个 XImageView 使用一个 BitmapManager,
-     * TODO 在 XImageView 的 onDraw() 中执行, 保证能获取到 width 和 height
-     * @param bitmap
+     * @param bitmap 设置 bitmap
+     * @param cache 是否进行cache
      */
     @Override
     public void setBitmap(Bitmap bitmap, boolean cache)
@@ -160,6 +164,11 @@ public class BitmapManager implements IBitmapManager
         setSrcBitmap(bitmap, cache);
     }
 
+    /**
+     *
+     * @param is 设置输入流
+     * @param config config
+     */
     @Override
     public void setInputStream(InputStream is, Bitmap.Config config)
     {
@@ -170,18 +179,25 @@ public class BitmapManager implements IBitmapManager
     /**
      * 开启HandlerThread
      */
-    private void initialize(Bitmap.Config config)
+    private synchronized void initialize(Bitmap.Config config)
     {
         onSetImageStart();
 
+        if (mLoadingHandler != null) {
+            mLoadingHandler.removeCallbacks(mInstanceDecoderRunnable);
+            mLoadingHandler.removeCallbacks(mCacheBitmapRunnable);
+            mLoadingHandler.removeCallbacks(mBitmapGrid.mDecodeThumbRunnable);
+        }
+
+        mLoadingThread.quit();
+        if (mDecoder != null) {
+            mDecoder.recycle();
+            mDecoder = null;
+        }
+
         mBitmapConfig = config == null ? Bitmap.Config.RGB_565 : config;
 
-        mCacheFile = new File(mXImageView.getCacheDir(), UUID.randomUUID().toString());
-        mCacheFile.deleteOnExit();
-
-        mLoadingThread = new HandlerThread(THREAD_NAME + this.hashCode());
         mLoadingThread.start();
-
         mLoadingHandler = new Handler(mLoadingThread.getLooper());
     }
 
@@ -194,142 +210,89 @@ public class BitmapManager implements IBitmapManager
     }
 
     /**
-     * 开始设置图片的缩略图，View的rect 等数据
-     */
-    private void startInitImageThumb()
-    {
-        mXImageView.callPost(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                updateViewRect(mXImageView.getWidth(), mXImageView.getHeight());
-            }
-        });
-    }
-
-    /**
-     * 设置图片结束
-     */
-    private synchronized void onSetImageFinished(final boolean success)
-    {
-        final Rect image = new Rect();
-        if (success) {
-            mIsSettingImage = false;
-            image.set(mImageRect);
-
-            /**
-             * TODO: 在这里完成初始化的动画或者特殊处理
-             */
-            IXImageView.InitType type = mXImageView.getInitType();
-            type = type == null ? IXImageView.InitType.FIT_VIEW_MIN : type;
-            switch (type) {
-                case FIT_VIEW_MIN:
-                    scaleToFitViewMin(mViewRect.centerX(), mViewRect.centerY(), false, 0);
-                    break;
-
-                case FIT_VIEW_MAX:
-                    scaleToFitViewMax(mViewRect.centerX(), mViewRect.centerY(), false, 0);
-                    break;
-
-                case FIT_IMAGE:
-                    break;
-
-                case FIT_VIEW_MIN_IMAGE_MIN:
-                    break;
-            }
-        }
-
-        mXImageView.callPost(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                mXImageView.onSetImageFinished(BitmapManager.this, success, image);
-            }
-        });
-        mXImageView.callPostInvalidate();
-    }
-
-    /**
-     * 直接设置 Bitmap, 这个函数只会走一次
+     * 直接设置 Bitmap
      */
     private void setSrcBitmap(final Bitmap bitmap, boolean enableCache)
     {
+        mSrcBitmap = bitmap;
         if (bitmap == null) {
             onSetImageFinished(true);
             return;
         }
 
         if (enableCache) {
-            mLoadingHandler.post(new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    try {
-                        FileOutputStream fos = new FileOutputStream(mCacheFile);
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos);
-                        fos.flush();
-                        fos.close();
-
-                        setBitmapDecoder(new FileInputStream(mCacheFile));
-                    }
-                    catch (Exception e) {
-                        e.printStackTrace();
-                        onSetImageFinished(false);
-                    }
-                }
-            });
+            mLoadingHandler.post(mCacheBitmapRunnable);
         }
         else {
-            mSrcBitmap = bitmap;
             mImageRect.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
 
-            mXImageView.callPost(new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    updateViewRect(mXImageView.getWidth(), mXImageView.getHeight());
-                }
-            });
+            updateViewRect(mViewRect.width(), mViewRect.height());
         }
     }
+
+    protected Runnable mCacheBitmapRunnable = new Runnable()
+    {
+        @Override
+        public void run()
+        {
+            try {
+                FileOutputStream fos = new FileOutputStream(mCacheFile);
+                mSrcBitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos);
+                fos.flush();
+                fos.close();
+
+                setBitmapDecoder(new FileInputStream(mCacheFile));
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+                onSetImageFinished(false);
+            }
+        }
+    };
 
     /**
      * 设置 BitmapRegionDecoder 这个函数只会走一次
      */
     private void setBitmapDecoder(final InputStream is)
     {
+        mTempInputStream = is;
         if (is == null) {
             onSetImageFinished(true);
             return;
         }
 
-        mLoadingHandler.post(new Runnable()
-        {
-            @Override
-            public void run()
-            {
-                try {
-                    mDecoder = BitmapRegionDecoder.newInstance(is, false);
-                    mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
-                }
-                catch (IOException e) {
-                    e.printStackTrace();
-                    mDecoder = null;
-                }
+        mLoadingHandler.post(mInstanceDecoderRunnable);
+    }
 
-                if (mDecoder != null) {
-                    startInitImageThumb();
-                }
-                else {
-                    onSetImageFinished(false);
+    private InputStream mTempInputStream = null;
+    protected Runnable mInstanceDecoderRunnable = new Runnable()
+    {
+        @Override
+        public void run()
+        {
+            try {
+                long before = System.currentTimeMillis();
+
+                mDecoder = BitmapRegionDecoder.newInstance(mTempInputStream, false);
+                mImageRect.set(0, 0, mDecoder.getWidth(), mDecoder.getHeight());
+
+                if (DEBUG) {
+                    Log.e(TAG, "new decoder Spend Time: " + (System.currentTimeMillis() - before));
                 }
             }
-        });
-    }
+            catch (IOException e) {
+                e.printStackTrace();
+                mDecoder = null;
+            }
+
+            if (mDecoder != null) {
+                updateViewRect(mViewRect.width(), mViewRect.height());
+            }
+            else {
+                onSetImageFinished(false);
+            }
+        }
+    };
 
     /**
      * 设置视图的尺寸, 并初始化其他相关尺寸
@@ -337,13 +300,15 @@ public class BitmapManager implements IBitmapManager
      * @param vw view width
      * @param vh view height
      */
-    private void updateViewRect(int vw, int vh)
+    private synchronized void updateViewRect(int vw, int vh)
     {
+        mViewRect.set(0, 0, vw, vh);
+
         int iw = mImageRect.width();
         int ih = mImageRect.height();
 
         if (vw * vh * iw * ih == 0) {
-            onSetImageFinished(false);
+//            onSetImageFinished(false);
             return;
         }
 
@@ -355,7 +320,6 @@ public class BitmapManager implements IBitmapManager
         mMaxScaleValue = Math.max(MAX_SCALE_FACTOR, getMaxFitViewValue());
         mMinScaleValue = Math.min(1, getMinFitViewValue());
 
-        mViewRect.set(0, 0, vw, vh);
         /**
          * 计算要缩放的比例
          */
@@ -398,6 +362,46 @@ public class BitmapManager implements IBitmapManager
          * 初始化Grid
          */
         mBitmapGrid.initializeBitmapGrid();
+    }
+
+    /**
+     * 设置图片结束
+     */
+    private synchronized void onSetImageFinished(final boolean success)
+    {
+        final Rect image = new Rect();
+        if (success) {
+            image.set(mImageRect);
+
+            IXImageView.InitType type = mXImageView.getInitType();
+            type = type == null ? IXImageView.InitType.FIT_VIEW_MIN : type;
+            switch (type) {
+                case FIT_IMAGE:
+                    // TODO: 显示原图
+
+                case FIT_VIEW_MIN_IMAGE_MIN:
+                    // TODO: 如果图片小于 view 的尺寸, 不用进行放大
+
+                case FIT_VIEW_MIN:
+                    scaleToFitViewMin(mViewRect.centerX(), mViewRect.centerY(), false, 0);
+                    break;
+
+                case FIT_VIEW_MAX:
+                    scaleToFitViewMax(mViewRect.centerX(), mViewRect.centerY(), false, 0);
+                    break;
+            }
+        }
+
+        mIsSettingImage = false;
+        mMainHandler.post(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                mXImageView.onSetImageFinished(BitmapManager.this, success, image);
+            }
+        });
+        mXImageView.callPostInvalidate();
     }
 
 
@@ -494,7 +498,7 @@ public class BitmapManager implements IBitmapManager
     /**
      * 检查或者更新视图的尺寸
      */
-    private boolean checkOrUpdateViewRect(int width, int height)
+    private synchronized boolean checkOrUpdateViewRect(int width, int height)
     {
         if (mViewRect.width() != width || mViewRect.height() != height) {
             onSetImageStart();
@@ -563,6 +567,9 @@ public class BitmapManager implements IBitmapManager
         int ih = mImageRect.height();
         int bw = (int) mShowBitmapRect.width();
         int bh = (int) mShowBitmapRect.height();
+        if (bw * bh == 0) {
+            return 1;
+        }
 
         /**
          * 以 bitmap 的宽高为标准
@@ -785,20 +792,26 @@ public class BitmapManager implements IBitmapManager
              * 异步加载缩略图
              */
             if (mLoadingThread.isAlive()) {
-                mLoadingHandler.post(new Runnable()
-                {
-                    @Override
-                    public void run()
-                    {
-                        decodeThumbUnitBitmap();
-                        /**
-                         * 设置完成
-                         */
-                        onSetImageFinished(true);
-                    }
-                });
+                mLoadingHandler.post(mDecodeThumbRunnable);
             }
         }
+
+        public Runnable mDecodeThumbRunnable = new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                long before = System.currentTimeMillis();
+                decodeThumbUnitBitmap();
+                if (DEBUG) {
+                    Log.e(TAG, "Decode Spend Time: " + (System.currentTimeMillis() - before));
+                }
+                /**
+                 * 设置完成
+                 */
+                onSetImageFinished(true);
+            }
+        };
 
         /**
          * 获取bitmap
@@ -1130,7 +1143,9 @@ public class BitmapManager implements IBitmapManager
     @Override
     public boolean isNotAvailable()
     {
-        return (mIsSettingImage || (mSrcBitmap == null && mDecoder == null) || mImageRect.width() <= 0 || mImageRect.height() <= 0);
+        return (mIsSettingImage ||
+               (mSrcBitmap == null && mDecoder == null) ||
+                mImageRect.width() <= 0 || mImageRect.height() <= 0);
     }
 
 
@@ -1189,6 +1204,7 @@ public class BitmapManager implements IBitmapManager
      * @param height 高
      * @return boolean (true 表示画图片成功, false 表示正在处理图片， 没有真正画出)
      */
+    @Override
     public boolean draw(@NonNull Canvas canvas, int width, int height)
     {
         if (isNotAvailable()) {
@@ -1211,6 +1227,11 @@ public class BitmapManager implements IBitmapManager
          * 更新视图或者画出图片
          */
         return !checkOrUpdateViewRect(width, height) && mBitmapGrid.drawVisibleGrid(canvas);
+    }
+
+    @Override
+    public void onViewSizeChanged(int width, int height) {
+        checkOrUpdateViewRect(width, height);
     }
 
     @Override
@@ -1353,7 +1374,7 @@ public class BitmapManager implements IBitmapManager
 
         RectF nRect = new RectF(left, top, right, bottom);
 
-        if (nRect.width() < mThumbShowBitmapRect.width() || nRect.height() < mThumbShowBitmapRect.height()) {
+        if (nRect.width() <= mThumbShowBitmapRect.width()-1 || nRect.height() <= mThumbShowBitmapRect.height()-1) {
             resetShowBitmapRect();
             return;
         }
@@ -1495,8 +1516,8 @@ public class BitmapManager implements IBitmapManager
      * 缩放到适应屏幕
      * 如果此时整个图片都在 视图可见区域中, 则放大到占满整个屏幕
      * 如果整个图片不再可见区域中， 则缩小到整个视图可见大小
-     * <p/>
-     * （最小适应屏幕） 一边和视图的一边想等，另外一边小于或等于
+     *
+     * （最小适应屏幕） 一边和视图的一边相等，另外一边小于或等于
      * (最大适应屏幕) 一边和视图的一边相等, 另外一边大于对应的视图的边
      *
      * @param cx         中心点
@@ -1532,6 +1553,12 @@ public class BitmapManager implements IBitmapManager
         }
 
         switch (type) {
+            case FIT_VIEW_MIN_IMAGE_MAX:
+                // TODO
+
+            case FIT_IMAGE_MIN_IMAGE_MAX:
+                // TODO
+
             case FIT_VIEW_MIN_VIEW_MAX:
                 if (sw < mViewRect.width() + 5f && sh < mViewRect.height() + 5f) {
                     destScale = maxFitScale;
@@ -1552,15 +1579,6 @@ public class BitmapManager implements IBitmapManager
                     destScale = Math.min(minFitScale, Math.min(ws, hs));
                 }
                 break;
-
-            case FIT_VIEW_MIN_IMAGE_MAX:
-                // TODO
-                break;
-
-            case FIT_IMAGE_MIN_IMAGE_MAX:
-                // TODO
-                break;
-
         }
 
         if (DEBUG) {
@@ -1626,7 +1644,9 @@ public class BitmapManager implements IBitmapManager
     public void destroy()
     {
         mLoadingThread.quit();
-        mCacheFile.delete(); // 删除临时文件
+        if (mCacheFile != null) {
+            mCacheFile.delete(); // 删除临时文件
+        }
         recycleAll();
 
         mXImageView.callPostInvalidate();

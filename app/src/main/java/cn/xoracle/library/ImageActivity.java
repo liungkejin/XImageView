@@ -70,8 +70,8 @@ public class ImageActivity extends AppCompatActivity
         File cacheFile = imageLoader.getDiskCache().get(imageUrl);
         if (cacheFile != null && cacheFile.exists()) {
             toastShort("CacheFile: " + cacheFile);
-            imageView.setImageURI(Uri.fromFile(cacheFile));
             xImageView.setImage(cacheFile, Bitmap.Config.ARGB_8888);
+            imageView.setImageURI(Uri.fromFile(cacheFile));
         }
         else {
             ImageLoader.getInstance().loadImage(imageUrl, new SimpleImageLoadingListener()

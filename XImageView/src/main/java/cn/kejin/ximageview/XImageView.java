@@ -42,55 +42,29 @@ public class XImageView extends View implements IXImageView
 
 
     /**
-     * Gesture Detector
-     */
-    private GestureManager mGestureManager = null;
-
-    /**
      * Action Listener
      */
     private OnActionListener mActionListener = null;
 
     /**
-     * bitmap 的管理器
+     * Gesture Detector
      */
-    private IBitmapManager mBM = null;
-
+    private final GestureManager mGestureManager;
 
     /**
-     * *************Config*****************
+     * bitmap 的管理器
      */
-//    private boolean mCacheBitmap = false;
-//
-//    private Bitmap.Config mBitmapConfig = Bitmap.Config.RGB_565;
+    private final IBitmapManager mBM;
 
+    /**
+     * 初始化类型
+     */
     private InitType mInitType = InitType.FIT_VIEW_MIN;
 
+    /**
+     * 双击动作类型
+     */
     private DoubleType mDoubleType = DoubleType.FIT_VIEW_MIN_VIEW_MAX;
-//
-//    /**
-//     * 初始化状态时，是否需要适应 view
-//     */
-//    private boolean mInitFitView = false;
-//
-//    /**
-//     * 双击放大的方式
-//     *
-//     * 当图片的最大放大尺寸都小于 view 的尺寸时， 强制为 fitImage
-//     * fitView: 不管图片的尺寸多少， 双击缩放总是放大到 最大适应view 或者 缩小到 最小适应view
-//     * fitImage: 双击缩放的时候为 放大到 Min(最大适应view, 最大放大尺寸) 或者 缩小到 Min(最小适应view, 图片的尺寸)
-//     */
-//    public enum TYPE_FIT
-//    {
-//        FIT_VIEW (0),
-//        FIT_IMAGE (1);
-//
-//        final int mType;
-//        TYPE_FIT(int t) { mType = t; }
-//    }
-//
-//    private TYPE_FIT mDoubleTapScaleType = TYPE_FIT.FIT_VIEW;
-
 
     public XImageView(Context context)
     {
@@ -112,6 +86,9 @@ public class XImageView extends View implements IXImageView
     {
         super(context, attrs, defStyleAttr);
         initialize(context, attrs);
+
+        mBM = new BitmapManager(this);
+        mGestureManager = new GestureManager(this, mBM);
     }
 
     private void initialize(Context context, AttributeSet attrs)
@@ -119,17 +96,14 @@ public class XImageView extends View implements IXImageView
         if (attrs != null) {
             TypedArray ta = context.obtainStyledAttributes(attrs, R.styleable.XImageView);
 
-            int initType = ta.getInt(R.styleable.XImageView_initType, mInitType.value);
+            int initType = ta.getInt(R.styleable.XImageView_initType, InitType.FIT_VIEW_MIN.value);
             mInitType = InitType.valueOf(initType);
 
-            int doubleType = ta.getInt(R.styleable.XImageView_doubleType, mDoubleType.value);
+            int doubleType = ta.getInt(R.styleable.XImageView_doubleType, DoubleType.FIT_VIEW_MIN_VIEW_MAX.value);
             mDoubleType = DoubleType.valueOf(doubleType);
 
             ta.recycle();
         }
-
-        mBM = new BitmapManager(this);
-        mGestureManager = new GestureManager(this, mBM);
 
         super.setOnLongClickListener(new OnLongClickListener()
         {
@@ -174,11 +148,8 @@ public class XImageView extends View implements IXImageView
     @Override
     protected void onDraw(Canvas canvas)
     {
-        int width = getWidth();
-        int height = getHeight();
-        if (mBM != null) {
-            boolean show = mBM.draw(canvas, width, height);
-        }
+        super.onDraw(canvas);
+        mBM.draw(canvas, getWidth(), getHeight());
     }
 
     @Override
@@ -188,12 +159,19 @@ public class XImageView extends View implements IXImageView
     }
 
     @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+
+        mBM.onViewSizeChanged(getWidth(), getHeight());
+    }
+
+    @Override
     protected void onAttachedToWindow()
     {
         super.onAttachedToWindow();
 
         if(DEBUG) {
-            Log.e(TAG, "OnAttachedToWindow");
+            Log.e(TAG, "OnAttachedToWindow, Width: " + getWidth() + " Height" + getHeight());
         }
     }
 
@@ -209,20 +187,6 @@ public class XImageView extends View implements IXImageView
         }
     }
 
-    /**
-     * 清除bitmap 和 config
-     */
-//    private void clearBitmapAndConfig()
-//    {
-//        if (mBM != null) {
-//            mBM.destroy();
-//        }
-//        mCacheBitmap = false;
-//
-//        mInitType = InitType.FIT_VIEW_MIN;
-//
-//        mDoubleType = DoubleType.FIT_VIEW_MIN_VIEW_MAX;
-//    }
 
     public void setImage(Bitmap bitmap)
     {
@@ -310,9 +274,7 @@ public class XImageView extends View implements IXImageView
      */
     public void scaleImage(float dest, boolean smooth, int smoothTime)
     {
-        if (mBM != null) {
-            mBM.scaleTo(dest, smooth, smoothTime);
-        }
+        mBM.scaleTo(dest, smooth, smoothTime);
     }
 
     /**
@@ -325,9 +287,7 @@ public class XImageView extends View implements IXImageView
      */
     public void scaleImage(int cx, int cy, float dest, boolean smooth, int smoothTime)
     {
-        if (mBM != null) {
-            mBM.scaleTo(cx, cy, dest, smooth, smoothTime);
-        }
+        mBM.scaleTo(cx, cy, dest, smooth, smoothTime);
     }
 
     /**
@@ -339,9 +299,7 @@ public class XImageView extends View implements IXImageView
      */
     public void scaleToFitViewMax(int cx, int cy, boolean smooth, int smoothTime)
     {
-        if (mBM != null) {
-            mBM.scaleToFitViewMax(cx, cy, smooth, smoothTime);
-        }
+        mBM.scaleToFitViewMax(cx, cy, smooth, smoothTime);
     }
 
     /**
@@ -353,9 +311,7 @@ public class XImageView extends View implements IXImageView
      */
     public void scaleToFitViewMin(int cx, int cy, boolean smooth, int smoothTime)
     {
-        if (mBM != null) {
-            mBM.scaleToFitViewMin(cx, cy, smooth, smoothTime);
-        }
+        mBM.scaleToFitViewMin(cx, cy, smooth, smoothTime);
     }
 
     /**
@@ -370,7 +326,7 @@ public class XImageView extends View implements IXImageView
      */
     public int scrollImage(int dx, int dy)
     {
-        return (mBM != null) ? mBM.move(dx, dy) : BitmapManager.NONE;
+        return  mBM.move(dx, dy);
     }
 
 
@@ -380,7 +336,7 @@ public class XImageView extends View implements IXImageView
      */
     public float getScaleFactor()
     {
-        return (mBM != null) ? mBM.getCurScaleFactor() : 0f;
+        return mBM.getCurScaleFactor();
     }
 
     /**
@@ -389,16 +345,16 @@ public class XImageView extends View implements IXImageView
      */
     public Rect getRealImageRect()
     {
-        return (mBM != null) ? mBM.getRealImageRect() : new Rect();
+        return mBM.getRealImageRect();
     }
 
     /**
      * 获取当前显示出来的图片的尺寸
      * @return Rect
      */
-    public Rect getCurImageRect()
+    public Rect getShowImageRect()
     {
-        return (mBM != null) ? mBM.getCurImageRect() : new Rect();
+        return mBM.getCurImageRect();
     }
 
     /**
@@ -407,7 +363,7 @@ public class XImageView extends View implements IXImageView
      */
     public boolean isSettingImage()
     {
-        return (mBM != null) && mBM.isSettingImage();
+        return mBM.isSettingImage();
     }
 
     /**
@@ -420,7 +376,7 @@ public class XImageView extends View implements IXImageView
     }
 
     /**
-     * 设置双击缩放的缩放方式, 默认为 fitView
+     * 设置双击缩放的缩放方式
      * @param type fit type
      */
     public void setDoubleTapScaleType(DoubleType type)
@@ -454,41 +410,11 @@ public class XImageView extends View implements IXImageView
     }
 
     @Override
-    public void callInvalidate()
-    {
-        invalidate();
-    }
-
-    @Override
     public void callPostInvalidate()
     {
         postInvalidate();
     }
 
-    @Override
-    public void callPost(Runnable runnable)
-    {
-        removeCallbacks(runnable);
-        post(runnable);
-    }
-
-    @Override
-    public Bitmap.Config getBitmapConfig()
-    {
-        return Bitmap.Config.RGB_565;
-    }
-
-    @Override
-    public boolean enableCache()
-    {
-        return false;
-    }
-
-    @Override
-    public boolean initAnimation()
-    {
-        return false; // TODO
-    }
 
     @Override
     public InitType getInitType()
@@ -500,12 +426,6 @@ public class XImageView extends View implements IXImageView
     public DoubleType getDoubleType()
     {
         return mDoubleType;
-    }
-
-    @Override
-    public boolean enableScaleOver()
-    {
-        return false; // TODO
     }
 
     @Override

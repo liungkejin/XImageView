@@ -16,7 +16,7 @@ import java.io.File;
  */
 public interface IXImageView
 {
-    boolean DEBUG = true;
+    boolean DEBUG = false;
 
     /**
      * 初始化状态类型
@@ -134,32 +134,32 @@ public interface IXImageView
      * @param intercept 是否劫持
      */
     void interceptParentTouchEvent(boolean intercept);
-
-    /**
-     * @return view的宽
-     */
-    int getWidth();
-
-    /**
-     * @return view的高度
-     */
-    int getHeight();
+//
+//    /**
+//     * @return view的宽
+//     */
+//    int getWidth();
+//
+//    /**
+//     * @return view的高度
+//     */
+//    int getHeight();
 
     /**
      * @return 获取 cache dir
      */
     @NonNull File getCacheDir();
 
-    /**
-     * 在 view的UI线程中执行， 保证能获取到 view的宽高
-     * @param runnable runnable
-     */
-    void callPost(Runnable runnable);
-
-    /**
-     * 调用 invalidate
-     */
-    void callInvalidate();
+//    /**
+//     * 在 view的UI线程中执行
+//     * @param runnable runnable
+//     */
+//    void callPost(Runnable runnable);
+//
+//    /**
+//     * 调用 invalidate
+//     */
+//    void callInvalidate();
 
     /**
      * 调用 postInvalidate 方法
@@ -167,21 +167,21 @@ public interface IXImageView
     void callPostInvalidate();
 
 
-    /**
-     * @return 解码选项
-     */
-    Bitmap.Config getBitmapConfig();
-
-    /**
-     * @return 是否cache bitmap
-     */
-    boolean enableCache();
-
-    /**
-     * @return 是否有初始化显示动画
-     */
-    boolean initAnimation();
-
+//    /**
+//     * @return 解码选项
+//     */
+//    Bitmap.Config getBitmapConfig();
+//
+//    /**
+//     * @return 是否cache bitmap
+//     */
+//    boolean enableCache();
+//
+//    /**
+//     * @return 是否有初始化显示动画
+//     */
+//    boolean initAnimation();
+//
 
     /**
      * @return 初始化类型
@@ -192,11 +192,11 @@ public interface IXImageView
      * @return 双击缩放类型
      */
     DoubleType getDoubleType();
-
-    /**
-     * @return 是否允许弹性缩放
-     */
-    boolean enableScaleOver();
+//
+//    /**
+//     * @return 是否允许弹性缩放
+//     */
+//    boolean enableScaleOver();
 
 
 
