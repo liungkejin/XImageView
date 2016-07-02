@@ -399,9 +399,9 @@ public class BitmapManager implements IBitmapManager
             public void run()
             {
                 mXImageView.onSetImageFinished(BitmapManager.this, success, image);
+                mXImageView.callPostInvalidate();
             }
         });
-        mXImageView.callPostInvalidate();
     }
 
 
